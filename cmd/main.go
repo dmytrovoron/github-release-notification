@@ -65,7 +65,7 @@ func server() {
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
 	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient)
-	restapi.RegisterSubscriptionHandlers(api, subscriptionService)
+	restapi.NewSubscriptionHandler(subscriptionService).Register(api)
 
 	server := restapi.NewServer(api)
 	server.SetHandler(restapi.NewHandler(api, func(checkCtx context.Context) error {

@@ -21,87 +21,87 @@ type SubscriptionService interface {
 	ListByEmail(ctx context.Context, email string) ([]app.Subscription, error)
 }
 
-func RegisterSubscriptionHandlers(api *operations.GitHubReleaseNotificationAPI, svc SubscriptionService) {
-	api.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(
-		func(params subscription.SubscribeParams) middleware.Responder {
-			err := svc.Subscribe(params.HTTPRequest.Context(), params.Email, params.Repo)
-			if err == nil {
-				return subscription.NewSubscribeOK()
-			}
+type SubscriptionHandler struct {
+	svc SubscriptionService
+}
 
-			switch {
-			case errors.Is(err, service.ErrInvalidEmail), errors.Is(err, service.ErrInvalidRepository):
-				return subscription.NewSubscribeBadRequest()
-			case errors.Is(err, service.ErrRepositoryNotFound):
-				return subscription.NewSubscribeNotFound()
-			case errors.Is(err, service.ErrSubscriptionConflict):
-				return subscription.NewSubscribeConflict()
-			default:
-				return middleware.Error(http.StatusInternalServerError, err.Error())
-			}
-		},
-	)
+func NewSubscriptionHandler(svc SubscriptionService) *SubscriptionHandler {
+	return &SubscriptionHandler{svc: svc}
+}
 
-	api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(
-		func(params subscription.ConfirmSubscriptionParams) middleware.Responder {
-			err := svc.Confirm(params.HTTPRequest.Context(), params.Token)
-			if err == nil {
-				return subscription.NewConfirmSubscriptionOK()
-			}
+func (h *SubscriptionHandler) Register(api *operations.GitHubReleaseNotificationAPI) {
+	api.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(h.subscribe)
+	api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(h.confirmSubscription)
+	api.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(h.unsubscribe)
+	api.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(h.getSubscriptions)
+}
 
-			switch {
-			case errors.Is(err, service.ErrInvalidToken):
-				return subscription.NewConfirmSubscriptionBadRequest()
-			case errors.Is(err, service.ErrTokenNotFound):
-				return subscription.NewConfirmSubscriptionNotFound()
-			default:
-				return middleware.Error(http.StatusInternalServerError, err.Error())
-			}
-		},
-	)
+func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) middleware.Responder {
+	err := h.svc.Subscribe(params.HTTPRequest.Context(), params.Email, params.Repo)
 
-	api.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(
-		func(params subscription.UnsubscribeParams) middleware.Responder {
-			err := svc.Unsubscribe(params.HTTPRequest.Context(), params.Token)
-			if err == nil {
-				return subscription.NewUnsubscribeOK()
-			}
+	switch {
+	case err == nil:
+		return subscription.NewSubscribeOK()
+	case errors.Is(err, service.ErrInvalidEmail), errors.Is(err, service.ErrInvalidRepository):
+		return subscription.NewSubscribeBadRequest()
+	case errors.Is(err, service.ErrRepositoryNotFound):
+		return subscription.NewSubscribeNotFound()
+	case errors.Is(err, service.ErrSubscriptionConflict):
+		return subscription.NewSubscribeConflict()
+	default:
+		return middleware.Error(http.StatusInternalServerError, err.Error())
+	}
+}
 
-			switch {
-			case errors.Is(err, service.ErrInvalidToken):
-				return subscription.NewUnsubscribeBadRequest()
-			case errors.Is(err, service.ErrTokenNotFound):
-				return subscription.NewUnsubscribeNotFound()
-			default:
-				return middleware.Error(http.StatusInternalServerError, err.Error())
-			}
-		},
-	)
+func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSubscriptionParams) middleware.Responder {
+	err := h.svc.Confirm(params.HTTPRequest.Context(), params.Token)
 
-	api.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(
-		func(params subscription.GetSubscriptionsParams) middleware.Responder {
-			items, err := svc.ListByEmail(params.HTTPRequest.Context(), params.Email)
-			if err != nil {
-				if errors.Is(err, service.ErrInvalidEmail) {
-					return subscription.NewGetSubscriptionsBadRequest()
-				}
+	switch {
+	case err == nil:
+		return subscription.NewConfirmSubscriptionOK()
+	case errors.Is(err, service.ErrInvalidToken):
+		return subscription.NewConfirmSubscriptionBadRequest()
+	case errors.Is(err, service.ErrTokenNotFound):
+		return subscription.NewConfirmSubscriptionNotFound()
+	default:
+		return middleware.Error(http.StatusInternalServerError, err.Error())
+	}
+}
 
-				return middleware.Error(http.StatusInternalServerError, err.Error())
-			}
+func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams) middleware.Responder {
+	err := h.svc.Unsubscribe(params.HTTPRequest.Context(), params.Token)
 
-			payload := make([]*models.Subscription, 0, len(items))
-			for _, item := range items {
-				email := item.Email
-				repo := item.Repository
-				payload = append(payload, &models.Subscription{
-					Email:       &email,
-					Repo:        &repo,
-					Confirmed:   item.Confirmed,
-					LastSeenTag: item.LastSeenTag,
-				})
-			}
+	switch {
+	case err == nil:
+		return subscription.NewUnsubscribeOK()
+	case errors.Is(err, service.ErrInvalidToken):
+		return subscription.NewUnsubscribeBadRequest()
+	case errors.Is(err, service.ErrTokenNotFound):
+		return subscription.NewUnsubscribeNotFound()
+	default:
+		return middleware.Error(http.StatusInternalServerError, err.Error())
+	}
+}
 
-			return subscription.NewGetSubscriptionsOK().WithPayload(payload)
-		},
-	)
+func (h *SubscriptionHandler) getSubscriptions(params subscription.GetSubscriptionsParams) middleware.Responder {
+	items, err := h.svc.ListByEmail(params.HTTPRequest.Context(), params.Email)
+	switch {
+	case err == nil:
+	case errors.Is(err, service.ErrInvalidEmail):
+		return subscription.NewGetSubscriptionsBadRequest()
+	default:
+		return middleware.Error(http.StatusInternalServerError, err.Error())
+	}
+
+	payload := make([]*models.Subscription, 0, len(items))
+	for _, item := range items {
+		payload = append(payload, &models.Subscription{
+			Email:       &item.Email,
+			Repo:        &item.Repository,
+			Confirmed:   item.Confirmed,
+			LastSeenTag: item.LastSeenTag,
+		})
+	}
+
+	return subscription.NewGetSubscriptionsOK().WithPayload(payload)
 }
