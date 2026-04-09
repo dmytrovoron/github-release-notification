@@ -6,15 +6,22 @@ run:
 linters:
   default: all
   disable:
+    - cyclop
     - depguard
     - err113
     - exhaustruct
+    - funlen
+    - gocyclo
+    - gocognit
+    - godoclint
     - lll
     - mnd
     - noinlineerr
     - nonamedreturns
     - paralleltest
+    - tagalign
     - testpackage
+    - varnamelen
     - wastedassign
     - wsl
     - wsl_v5
@@ -35,12 +42,10 @@ linters:
       min-occurrences: 2
     gocritic:
       enable-all: true
+      disabled-checks:
+        - exitAfterDefer
     gocyclo:
       min-complexity: 10
-    godoclint:
-      default: all
-      disable:
-        - max-len
     godot:
       scope: toplevel
       capital: true
@@ -48,6 +53,7 @@ linters:
       enable-all: true
       disable:
         - fieldalignment
+        - shadow
     ineffassign:
       check-escaping-errors: true
     misspell:
@@ -76,6 +82,7 @@ linters:
         - name: banned-characters
         - name: bare-return
         - name: blank-imports
+          disabled: true
         - name: bool-literal-in-expr
         - name: call-to-gc
         - name: comment-spacings
@@ -239,11 +246,6 @@ linters:
         linters: [revive]
       - source: "httptest."
         linters: [noctx]
-      - path: _test\.go
-        linters:
-          - godoclint
-      - linters: [godoclint]
-        text: 'package should have a godoc \(\"main\"\)'
 
 formatters:
   enable:

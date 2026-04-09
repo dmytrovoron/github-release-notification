@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: gh-release-notification-db
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gh-release-notification-app
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
+      MIGRATIONS_PATH: file:///app/migrations
+      DATABASE_PING_TIMEOUT: 5s
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  postgres_data:

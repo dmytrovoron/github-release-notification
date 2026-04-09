@@ -3,8 +3,11 @@
 package restapi
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/runtime"
@@ -22,6 +25,15 @@ func configureFlags(api *operations.GitHubReleaseNotificationAPI) {
 }
 
 func configureAPI(api *operations.GitHubReleaseNotificationAPI) http.Handler {
+	return configureAPIWithHealthChecker(api, nil)
+}
+
+// NewHandler configures API handlers and returns middleware-wrapped handler with an injected health checker.
+func NewHandler(api *operations.GitHubReleaseNotificationAPI, healthChecker func(context.Context) error) http.Handler {
+	return configureAPIWithHealthChecker(api, healthChecker)
+}
+
+func configureAPIWithHealthChecker(api *operations.GitHubReleaseNotificationAPI, healthChecker func(context.Context) error) http.Handler {
 	// Configure the API here
 	api.ServeError = errors.ServeError
 
@@ -84,7 +96,7 @@ func configureAPI(api *operations.GitHubReleaseNotificationAPI) http.Handler {
 
 	api.ServerShutdown = func() {}
 
-	return setupGlobalMiddleware(api.Serve(setupMiddlewares))
+	return setupGlobalMiddleware(api.Serve(setupMiddlewares), healthChecker)
 }
 
 // The TLS configuration before HTTPS server starts.
@@ -111,6 +123,31 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics.
-func setupGlobalMiddleware(handler http.Handler) http.Handler {
-	return handler
+func setupGlobalMiddleware(handler http.Handler, healthChecker func(context.Context) error) http.Handler {
+	checker := healthChecker
+	if checker == nil {
+		checker = func(context.Context) error { return nil }
+	}
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/healthz" && request.Method == http.MethodGet {
+			ctx, cancel := context.WithTimeout(request.Context(), 2*time.Second)
+			defer cancel()
+
+			statusCode := http.StatusOK
+			status := "ok"
+			if err := checker(ctx); err != nil {
+				statusCode = http.StatusServiceUnavailable
+				status = "degraded"
+			}
+
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(statusCode)
+			_ = json.NewEncoder(writer).Encode(map[string]string{"status": status})
+
+			return
+		}
+
+		handler.ServeHTTP(writer, request)
+	})
 }

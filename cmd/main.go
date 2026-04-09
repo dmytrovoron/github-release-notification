@@ -1,15 +1,21 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"os"
+	"time"
 
 	"github.com/go-openapi/loads"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jessevdk/go-flags"
 
+	"github.com/dmytrovoron/github-release-notification/internal/config"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/migrations"
 )
 
 func main() {
@@ -17,6 +23,32 @@ func main() {
 }
 
 func server() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Printf("close db connection: %v", closeErr)
+		}
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.DatabasePingTimeout)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		log.Fatalln(err)
+	}
+
+	if err := migrations.Run(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+		log.Fatalln(err)
+	}
+
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
 		log.Fatalln(err)
@@ -24,6 +56,12 @@ func server() {
 
 	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
 	server := restapi.NewServer(api)
+	server.SetHandler(restapi.NewHandler(api, func(checkCtx context.Context) error {
+		pingCtx, pingCancel := context.WithTimeout(checkCtx, 2*time.Second)
+		defer pingCancel()
+
+		return db.PingContext(pingCtx)
+	}))
 	server.ConfigureFlags() // inject API-specific custom flags. Must be called before args parsing
 
 	parser := flags.NewParser(server, flags.Default)
@@ -48,8 +86,6 @@ func server() {
 		}
 		os.Exit(code)
 	}
-
-	server.ConfigureAPI() // configure handlers, routes and middleware
 
 	if err := server.Serve(); err != nil {
 		_ = server.Shutdown()
