@@ -38,6 +38,10 @@ jobs:
       - name: Check go.mod/go.sum are tidy
         run: go mod tidy -diff
 
+      - name: Check tools go.mod/go.sum are tidy
+        working-directory: tools
+        run: go mod tidy -diff
+
       - name: Verify downloaded dependencies
         run: go mod verify
 
