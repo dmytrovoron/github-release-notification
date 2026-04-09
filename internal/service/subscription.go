@@ -1,0 +1,199 @@
+package service
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net/mail"
+	"regexp"
+	"strings"
+
+	app "github.com/dmytrovoron/github-release-notification/internal"
+	"github.com/dmytrovoron/github-release-notification/internal/repository"
+)
+
+type GitHubRepositoryChecker interface {
+	RepositoryExists(ctx context.Context, repository string) (bool, error)
+}
+
+type SubscriptionRepository interface {
+	Create(ctx context.Context, subscription *repository.Subscription) (repository.Subscription, error)
+	ExistsActiveOrPending(ctx context.Context, email, repository string) (bool, error)
+	FindByConfirmToken(ctx context.Context, token string) (repository.Subscription, error)
+	FindByUnsubscribeToken(ctx context.Context, token string) (repository.Subscription, error)
+	ListActiveByEmail(ctx context.Context, email string) ([]repository.Subscription, error)
+	UpdateStatus(ctx context.Context, id int64, status app.SubscriptionStatus) error
+}
+
+type SubscriptionService struct {
+	subscriptions SubscriptionRepository
+	githubChecker GitHubRepositoryChecker
+}
+
+var (
+	ErrInvalidEmail         = errors.New("invalid email")
+	ErrInvalidRepository    = errors.New("invalid repository")
+	ErrInvalidToken         = errors.New("invalid token")
+	ErrRepositoryNotFound   = errors.New("repository not found")
+	ErrSubscriptionConflict = errors.New("subscription conflict")
+	ErrTokenNotFound        = errors.New("token not found")
+)
+
+var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+func NewSubscriptionService(
+	subscriptions SubscriptionRepository,
+	githubChecker GitHubRepositoryChecker,
+) *SubscriptionService {
+	return &SubscriptionService{
+		subscriptions: subscriptions,
+		githubChecker: githubChecker,
+	}
+}
+
+func (s *SubscriptionService) Subscribe(ctx context.Context, email, repositoryName string) error {
+	email = strings.TrimSpace(email)
+	repositoryName = strings.TrimSpace(repositoryName)
+
+	if !isValidEmail(email) {
+		return ErrInvalidEmail
+	}
+	if !isValidRepository(repositoryName) {
+		return ErrInvalidRepository
+	}
+
+	exists, err := s.githubChecker.RepositoryExists(ctx, repositoryName)
+	if err != nil {
+		return fmt.Errorf("check repository in github: %w", err)
+	}
+	if !exists {
+		return ErrRepositoryNotFound
+	}
+
+	alreadySubscribed, err := s.subscriptions.ExistsActiveOrPending(ctx, email, repositoryName)
+	if err != nil {
+		return fmt.Errorf("check existing subscription: %w", err)
+	}
+	if alreadySubscribed {
+		return ErrSubscriptionConflict
+	}
+
+	confirmToken, err := generateToken()
+	if err != nil {
+		return err
+	}
+	unsubscribeToken, err := generateToken()
+	if err != nil {
+		return err
+	}
+
+	_, err = s.subscriptions.Create(ctx, &repository.Subscription{
+		Email:            email,
+		Repository:       repositoryName,
+		Status:           app.SubscriptionStatusPending,
+		ConfirmToken:     confirmToken,
+		UnsubscribeToken: unsubscribeToken,
+	})
+	if err != nil {
+		return fmt.Errorf("create subscription: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SubscriptionService) Confirm(ctx context.Context, token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ErrInvalidToken
+	}
+
+	subscriptionEntity, err := s.subscriptions.FindByConfirmToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrTokenNotFound
+		}
+
+		return fmt.Errorf("find subscription by confirm token: %w", err)
+	}
+
+	return s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusActive)
+}
+
+func (s *SubscriptionService) Unsubscribe(ctx context.Context, token string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ErrInvalidToken
+	}
+
+	subscriptionEntity, err := s.subscriptions.FindByUnsubscribeToken(ctx, token)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrTokenNotFound
+		}
+
+		return fmt.Errorf("find subscription by unsubscribe token: %w", err)
+	}
+
+	return s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusUnsubscribed)
+}
+
+func (s *SubscriptionService) ListByEmail(ctx context.Context, email string) ([]app.Subscription, error) {
+	email = strings.TrimSpace(email)
+	if !isValidEmail(email) {
+		return nil, ErrInvalidEmail
+	}
+
+	subscriptions, err := s.subscriptions.ListActiveByEmail(ctx, email)
+	if err != nil {
+		return nil, fmt.Errorf("list active subscriptions by email: %w", err)
+	}
+
+	result := make([]app.Subscription, 0, len(subscriptions))
+	for i := range subscriptions {
+		item := subscriptions[i]
+		result = append(result, app.Subscription{
+			Email:      item.Email,
+			Repository: item.Repository,
+			Confirmed:  item.Status == app.SubscriptionStatusActive,
+		})
+	}
+
+	return result, nil
+}
+
+func isValidEmail(email string) bool {
+	parsed, err := mail.ParseAddress(email)
+	if err != nil {
+		return false
+	}
+
+	return parsed.Address == email
+}
+
+func isValidRepository(repositoryName string) bool {
+	return repositoryPattern.MatchString(repositoryName)
+}
+
+func generateToken() (string, error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate secure token bytes: %w", err)
+	}
+
+	return hex.EncodeToString(buf), nil
+}
+
+func (s *SubscriptionService) updateStatus(
+	ctx context.Context,
+	subscriptionID int64,
+	status app.SubscriptionStatus,
+) error {
+	if err := s.subscriptions.UpdateStatus(ctx, subscriptionID, status); err != nil {
+		return fmt.Errorf("update subscription status: %w", err)
+	}
+
+	return nil
+}

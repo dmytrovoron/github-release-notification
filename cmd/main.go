@@ -15,7 +15,10 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/config"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/integration/github"
 	"github.com/dmytrovoron/github-release-notification/internal/migrations"
+	"github.com/dmytrovoron/github-release-notification/internal/repository/postgres"
+	"github.com/dmytrovoron/github-release-notification/internal/service"
 )
 
 func main() {
@@ -55,6 +58,15 @@ func server() {
 	}
 
 	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
+	githubClient, err := github.NewClient(cfg.GitHubAPIBaseURL, cfg.GitHubAPITimeout)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	subscriptionRepo := postgres.NewSubscriptionRepository(db)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient)
+	restapi.RegisterSubscriptionHandlers(api, subscriptionService)
+
 	server := restapi.NewServer(api)
 	server.SetHandler(restapi.NewHandler(api, func(checkCtx context.Context) error {
 		pingCtx, pingCancel := context.WithTimeout(checkCtx, 2*time.Second)
