@@ -1,4 +1,4 @@
-// This file is safe to edit. Once it exists it will not be overwritten
+// This file is safe to edit. Once it exists it will not be overwritten.
 
 package restapi
 
@@ -22,7 +22,7 @@ func configureFlags(api *operations.GitHubReleaseNotificationAPI) {
 }
 
 func configureAPI(api *operations.GitHubReleaseNotificationAPI) http.Handler {
-	// configure the api here
+	// Configure the API here
 	api.ServeError = errors.ServeError
 
 	// Set your custom logger if needed. Default one is log.Printf
@@ -44,32 +44,40 @@ func configureAPI(api *operations.GitHubReleaseNotificationAPI) http.Handler {
 	// subscription.SubscribeMaxParseMemory = 32 << 20
 
 	if api.SubscriptionConfirmSubscriptionHandler == nil {
-		api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(func(params subscription.ConfirmSubscriptionParams) middleware.Responder {
-			_ = params
+		api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(
+			func(params subscription.ConfirmSubscriptionParams) middleware.Responder {
+				_ = params
 
-			return middleware.NotImplemented("operation subscription.ConfirmSubscription has not yet been implemented")
-		})
+				return middleware.NotImplemented("operation subscription.ConfirmSubscription has not yet been implemented")
+			},
+		)
 	}
 	if api.SubscriptionGetSubscriptionsHandler == nil {
-		api.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(func(params subscription.GetSubscriptionsParams) middleware.Responder {
-			_ = params
+		api.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(
+			func(params subscription.GetSubscriptionsParams) middleware.Responder {
+				_ = params
 
-			return middleware.NotImplemented("operation subscription.GetSubscriptions has not yet been implemented")
-		})
+				return middleware.NotImplemented("operation subscription.GetSubscriptions has not yet been implemented")
+			},
+		)
 	}
 	if api.SubscriptionSubscribeHandler == nil {
-		api.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(func(params subscription.SubscribeParams) middleware.Responder {
-			_ = params
+		api.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(
+			func(params subscription.SubscribeParams) middleware.Responder {
+				_ = params
 
-			return middleware.NotImplemented("operation subscription.Subscribe has not yet been implemented")
-		})
+				return middleware.NotImplemented("operation subscription.Subscribe has not yet been implemented")
+			},
+		)
 	}
 	if api.SubscriptionUnsubscribeHandler == nil {
-		api.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(func(params subscription.UnsubscribeParams) middleware.Responder {
-			_ = params
+		api.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(
+			func(params subscription.UnsubscribeParams) middleware.Responder {
+				_ = params
 
-			return middleware.NotImplemented("operation subscription.Unsubscribe has not yet been implemented")
-		})
+				return middleware.NotImplemented("operation subscription.Unsubscribe has not yet been implemented")
+			},
+		)
 	}
 
 	api.PreServerShutdown = func() {}
@@ -88,7 +96,7 @@ func configureTLS(tlsConfig *tls.Config) {
 // As soon as server is initialized but not run yet, this function will be called.
 // If you need to modify a config, store server instance to stop it individually later, this is the place.
 // This function can be called multiple times, depending on the number of serving schemes.
-// scheme value will be set accordingly: "http", "https" or "unix".
+// The scheme value will be set accordingly: "http", "https" or "unix".
 func configureServer(server *http.Server, scheme, addr string) {
 	_ = server
 	_ = scheme

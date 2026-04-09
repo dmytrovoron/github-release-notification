@@ -6,8 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/go-openapi/loads"
+
+	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 )
 
 func TestDocsEndpointServesSwaggerUI(t *testing.T) {
@@ -19,7 +20,7 @@ func TestDocsEndpointServesSwaggerUI(t *testing.T) {
 	api := operations.NewGitHubReleaseNotificationAPI(spec)
 	handler := configureAPI(api)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/docs", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/docs", http.NoBody)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -34,9 +35,9 @@ func TestDocsEndpointServesSwaggerUI(t *testing.T) {
 
 	body := strings.ToLower(rec.Body.String())
 	if !strings.Contains(body, "<html") {
-		t.Fatalf("expected HTML response body")
+		t.Fatal("expected HTML response body")
 	}
 	if !strings.Contains(body, "swagger") {
-		t.Fatalf("expected swagger docs page content")
+		t.Fatal("expected swagger docs page content")
 	}
 }

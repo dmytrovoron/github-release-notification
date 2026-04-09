@@ -5,10 +5,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/go-openapi/loads"
 	"github.com/jessevdk/go-flags"
+
+	"github.com/dmytrovoron/github-release-notification/internal/http/restapi"
+	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 )
 
 func main() {
@@ -27,7 +28,8 @@ func server() {
 
 	parser := flags.NewParser(server, flags.Default)
 	parser.ShortDescription = "GitHub Release Notification API"
-	parser.LongDescription = "GitHub Release Notification API that allows users to subscribe to email notifications about new releases of a chosen GitHub repository."
+	parser.LongDescription = "GitHub Release Notification API that allows users to subscribe to email notifications " +
+		"about new releases of a chosen GitHub repository."
 
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)

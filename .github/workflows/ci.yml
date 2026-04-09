@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deps:
+    name: Verify Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run go generate and verify clean tree
+        run: |
+          go generate ./...
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "go generate changed files. Please run 'go generate ./...' and commit generated updates."
+            git status --short
+            exit 1
+          fi
+
+      - name: Check go.mod/go.sum are tidy
+        run: go mod tidy -diff
+
+      - name: Verify downloaded dependencies
+        run: go mod verify
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.11
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
