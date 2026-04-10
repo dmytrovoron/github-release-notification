@@ -16,7 +16,7 @@ import (
 )
 
 type GitHubRepositoryChecker interface {
-	RepositoryExists(ctx context.Context, repository string) (bool, error)
+	RepositoryExists(ctx context.Context, owner, repo string) (bool, error)
 }
 
 type SubscriptionRepository interface {
@@ -54,18 +54,17 @@ func NewSubscriptionService(
 	}
 }
 
-func (s *SubscriptionService) Subscribe(ctx context.Context, email, repositoryName string) error {
-	email = strings.TrimSpace(email)
-	repositoryName = strings.TrimSpace(repositoryName)
-
+func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo string) error {
 	if !isValidEmail(email) {
 		return ErrInvalidEmail
 	}
-	if !isValidRepository(repositoryName) {
+	if !isValidRepository(ownerRepo) {
 		return ErrInvalidRepository
 	}
 
-	exists, err := s.githubChecker.RepositoryExists(ctx, repositoryName)
+	owner, repo, _ := strings.Cut(ownerRepo, "/")
+
+	exists, err := s.githubChecker.RepositoryExists(ctx, owner, repo)
 	if err != nil {
 		return fmt.Errorf("check repository in github: %w", err)
 	}
@@ -73,7 +72,7 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, repositoryNa
 		return ErrRepositoryNotFound
 	}
 
-	alreadySubscribed, err := s.subscriptions.ExistsActiveOrPending(ctx, email, repositoryName)
+	alreadySubscribed, err := s.subscriptions.ExistsActiveOrPending(ctx, email, ownerRepo)
 	if err != nil {
 		return fmt.Errorf("check existing subscription: %w", err)
 	}
@@ -92,7 +91,7 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, repositoryNa
 
 	_, err = s.subscriptions.Create(ctx, &repository.Subscription{
 		Email:            email,
-		Repository:       repositoryName,
+		Repository:       ownerRepo,
 		Status:           app.SubscriptionStatusPending,
 		ConfirmToken:     confirmToken,
 		UnsubscribeToken: unsubscribeToken,

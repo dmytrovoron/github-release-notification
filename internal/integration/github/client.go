@@ -2,57 +2,40 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
+
+	"github.com/google/go-github/v84/github"
 )
 
+// Client is a wrapper around the google/go-github client.
+// The go-github library handles all response codes from GitHub,
+// including rate limiting, authentication errors, and other non-2xx responses.
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
+	gh *github.Client
 }
 
-func NewClient(baseURL string, timeout time.Duration) (*Client, error) {
-	parsedURL, err := url.Parse(baseURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse github api base url: %w", err)
-	}
+func NewClient(authToken string, timeout time.Duration) *Client {
+	authToken = strings.TrimSpace(authToken)
+	httpClient := &http.Client{Timeout: timeout}
+	gh := github.NewClient(httpClient).WithAuthToken(authToken)
 
-	return &Client{
-		baseURL: parsedURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
-	}, nil
+	return &Client{gh: gh}
 }
 
-func (c *Client) RepositoryExists(ctx context.Context, repository string) (bool, error) {
-	relativePath := "/repos/" + strings.TrimSpace(repository)
-	endpoint := c.baseURL.ResolveReference(&url.URL{Path: relativePath})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
-	if err != nil {
-		return false, fmt.Errorf("build github request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "github-release-notification")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return false, fmt.Errorf("execute github request: %w", err)
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
+func (c *Client) RepositoryExists(ctx context.Context, owner, repo string) (bool, error) {
+	_, _, err := c.gh.Repositories.Get(ctx, owner, repo)
+	if err == nil {
 		return true, nil
-	case http.StatusNotFound:
-		return false, nil
-	default:
-		return false, fmt.Errorf("github api returned status %d", resp.StatusCode)
 	}
+
+	errResp, ok := errors.AsType[*github.ErrorResponse](err)
+	if !ok {
+		return false, fmt.Errorf("unexpected error type: %w", err)
+	}
+
+	return errResp.Response.StatusCode != http.StatusNotFound, nil
 }

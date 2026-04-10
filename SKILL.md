@@ -74,6 +74,8 @@ Use this skill when working on:
 
 ## Testing Checklist
 
+- Use `github.com/stretchr/testify` (`require` and `assert`) for all tests.
+- Use `t.Context()` instead of `context.Background()` in tests.
 - Unit tests cover:
   - repository format validation;
   - subscribe success and failure branches (`400`, `404`);

@@ -15,7 +15,7 @@ import (
 )
 
 type SubscriptionService interface {
-	Subscribe(ctx context.Context, email, repository string) error
+	Subscribe(ctx context.Context, email, ownerRepo string) error
 	Confirm(ctx context.Context, token string) error
 	Unsubscribe(ctx context.Context, token string) error
 	ListByEmail(ctx context.Context, email string) ([]app.Subscription, error)

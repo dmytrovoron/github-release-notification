@@ -1,4 +1,4 @@
-.PHONY: lint test test-unit test-e2e govulncheck
+.PHONY: lint test test-unit test-e2e test-integration govulncheck
 
 lint:
 	golangci-lint run ./...
@@ -12,6 +12,9 @@ test-unit:
 
 test-e2e:
 	go test -tags e2e ./tests/e2e/...
+
+test-integration:
+	go test -tags integration ./...
 
 govulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@latest -format json ./... > govulncheck.json

@@ -4,6 +4,7 @@ run:
   tests: true
   build-tags:
     - e2e
+    - integration
 
 linters:
   default: all
