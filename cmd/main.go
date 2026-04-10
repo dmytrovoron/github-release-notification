@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -61,7 +62,9 @@ func server() {
 	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout).WithBaseURL(cfg.GitHubAPIBaseURL)
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
-	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, logger)
 	restapi.NewSubscriptionHandler(subscriptionService).Register(api)
 
 	server := restapi.NewServer(api)
@@ -70,7 +73,7 @@ func server() {
 		defer pingCancel()
 
 		return db.PingContext(pingCtx)
-	}))
+	}, logger))
 	server.ConfigureFlags() // inject API-specific custom flags. Must be called before args parsing
 
 	parser := flags.NewParser(server, flags.Default)

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -31,6 +32,7 @@ type SubscriptionRepository interface {
 type SubscriptionService struct {
 	subscriptions SubscriptionRepository
 	githubChecker GitHubRepositoryChecker
+	log           *slog.Logger
 }
 
 var (
@@ -47,10 +49,12 @@ var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 func NewSubscriptionService(
 	subscriptions SubscriptionRepository,
 	githubChecker GitHubRepositoryChecker,
+	log *slog.Logger,
 ) *SubscriptionService {
 	return &SubscriptionService{
 		subscriptions: subscriptions,
 		githubChecker: githubChecker,
+		log:           log,
 	}
 }
 
@@ -100,6 +104,13 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 		return fmt.Errorf("create subscription: %w", err)
 	}
 
+	s.log.InfoContext(ctx, "subscription created",
+		"email", email,
+		"repository", ownerRepo,
+		"confirmToken", confirmToken,
+		"unsubscribeToken", unsubscribeToken,
+	)
+
 	return nil
 }
 
@@ -118,7 +129,13 @@ func (s *SubscriptionService) Confirm(ctx context.Context, token string) error {
 		return fmt.Errorf("find subscription by confirm token: %w", err)
 	}
 
-	return s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusActive)
+	if err := s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusActive); err != nil {
+		return err
+	}
+
+	s.log.InfoContext(ctx, "subscription confirmed", "subscriptionID", subscriptionEntity.ID)
+
+	return nil
 }
 
 func (s *SubscriptionService) Unsubscribe(ctx context.Context, token string) error {
@@ -136,7 +153,13 @@ func (s *SubscriptionService) Unsubscribe(ctx context.Context, token string) err
 		return fmt.Errorf("find subscription by unsubscribe token: %w", err)
 	}
 
-	return s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusUnsubscribed)
+	if err := s.updateStatus(ctx, subscriptionEntity.ID, app.SubscriptionStatusUnsubscribed); err != nil {
+		return err
+	}
+
+	s.log.InfoContext(ctx, "subscription unsubscribed", "subscriptionID", subscriptionEntity.ID)
+
+	return nil
 }
 
 func (s *SubscriptionService) ListByEmail(ctx context.Context, email string) ([]app.Subscription, error) {

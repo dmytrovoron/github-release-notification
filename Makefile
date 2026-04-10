@@ -17,7 +17,7 @@ lint-install:
 	@test -x $(BIN_DIR)/golangci-lint || curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(BIN_DIR)" "$(GOLANGCI_LINT_VERSION)"
 
 lint: lint-install
-	"$(BIN_DIR)/golangci-lint" run ./...
+	$(BIN_DIR)/golangci-lint run ./...
 
 test: test-unit test-integration test-e2e
 

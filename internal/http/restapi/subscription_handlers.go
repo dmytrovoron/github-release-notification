@@ -3,6 +3,7 @@ package restapi
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-openapi/runtime/middleware"
@@ -37,7 +38,11 @@ func (h *SubscriptionHandler) Register(api *operations.GitHubReleaseNotification
 }
 
 func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) middleware.Responder {
-	err := h.svc.Subscribe(params.HTTPRequest.Context(), params.Email, params.Repo)
+	ctx := params.HTTPRequest.Context()
+	err := h.svc.Subscribe(ctx, params.Email, params.Repo)
+	if err != nil {
+		slog.Default().ErrorContext(ctx, "subscribe failed", "email", params.Email, "repo", params.Repo, "error", err)
+	}
 
 	switch {
 	case err == nil:
@@ -54,7 +59,11 @@ func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) mid
 }
 
 func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSubscriptionParams) middleware.Responder {
-	err := h.svc.Confirm(params.HTTPRequest.Context(), params.Token)
+	ctx := params.HTTPRequest.Context()
+	err := h.svc.Confirm(ctx, params.Token)
+	if err != nil {
+		slog.Default().ErrorContext(ctx, "confirm subscription failed", "error", err)
+	}
 
 	switch {
 	case err == nil:
@@ -69,7 +78,11 @@ func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSub
 }
 
 func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams) middleware.Responder {
-	err := h.svc.Unsubscribe(params.HTTPRequest.Context(), params.Token)
+	ctx := params.HTTPRequest.Context()
+	err := h.svc.Unsubscribe(ctx, params.Token)
+	if err != nil {
+		slog.Default().ErrorContext(ctx, "unsubscribe failed", "error", err)
+	}
 
 	switch {
 	case err == nil:
@@ -84,7 +97,12 @@ func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams)
 }
 
 func (h *SubscriptionHandler) getSubscriptions(params subscription.GetSubscriptionsParams) middleware.Responder {
-	items, err := h.svc.ListByEmail(params.HTTPRequest.Context(), params.Email)
+	ctx := params.HTTPRequest.Context()
+	items, err := h.svc.ListByEmail(ctx, params.Email)
+	if err != nil {
+		slog.Default().ErrorContext(ctx, "get subscriptions failed", "email", params.Email, "error", err)
+	}
+
 	switch {
 	case err == nil:
 	case errors.Is(err, service.ErrInvalidEmail):
