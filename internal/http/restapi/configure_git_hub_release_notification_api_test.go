@@ -7,15 +7,15 @@ import (
 	"testing"
 
 	"github.com/go-openapi/loads"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 )
 
 func TestDocsEndpointServesSwaggerUI(t *testing.T) {
 	spec, err := loads.Embedded(SwaggerJSON, FlatSwaggerJSON)
-	if err != nil {
-		t.Fatalf("load embedded spec: %v", err)
-	}
+	require.NoError(t, err, "load embedded spec")
 
 	api := operations.NewGitHubReleaseNotificationAPI(spec)
 	handler := configureAPI(api)
@@ -24,20 +24,12 @@ func TestDocsEndpointServesSwaggerUI(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
-	}
+	require.Equal(t, http.StatusOK, rec.Code, "unexpected status code")
 
 	contentType := rec.Header().Get("Content-Type")
-	if !strings.Contains(contentType, "text/html") {
-		t.Fatalf("expected HTML content type, got %q", contentType)
-	}
+	assert.Contains(t, contentType, "text/html", "expected HTML content type")
 
 	body := strings.ToLower(rec.Body.String())
-	if !strings.Contains(body, "<html") {
-		t.Fatal("expected HTML response body")
-	}
-	if !strings.Contains(body, "swagger") {
-		t.Fatal("expected swagger docs page content")
-	}
+	assert.Contains(t, body, "<html", "expected HTML response body")
+	assert.Contains(t, body, "swagger", "expected swagger docs page content")
 }
