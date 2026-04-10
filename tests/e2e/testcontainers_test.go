@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -33,26 +32,16 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 
 	nw, err := network.New(ctx, network.WithAttachable())
 	require.NoError(t, err, "create docker network")
-	t.Cleanup(func() {
-		_ = nw.Remove(ctx)
-	})
+	t.Cleanup(func() { _ = nw.Remove(ctx) })
 
-	dbC, err := startPostgresContainer(ctx, nw)
-	require.NoError(t, err, "start db container")
-	t.Cleanup(func() {
-		_ = testcontainers.TerminateContainer(dbC)
-	})
+	dbC := startPostgresContainer(t, nw)
 
 	dbHost, err := dbC.Host(ctx)
 	require.NoError(t, err, "resolve db host")
 	dbPort, err := dbC.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err, "resolve db port")
 
-	appC, err := startAppContainer(ctx, repoRoot, nw)
-	require.NoError(t, err, "start app container")
-	t.Cleanup(func() {
-		_ = appC.Terminate(ctx)
-	})
+	appC := startAppContainer(t, repoRoot, nw)
 
 	appHost, err := appC.Host(ctx)
 	require.NoError(t, err, "resolve app host")
@@ -112,9 +101,11 @@ func findRepoRoot(t *testing.T) string {
 	}
 }
 
-func startPostgresContainer(ctx context.Context, nw *testcontainers.DockerNetwork) (testcontainers.Container, error) {
-	return testcontainers.Run(
-		ctx,
+func startPostgresContainer(t *testing.T, nw *testcontainers.DockerNetwork) testcontainers.Container {
+	t.Helper()
+
+	c, err := testcontainers.Run(
+		t.Context(),
 		"postgres:18-alpine",
 		network.WithNetwork([]string{"db"}, nw),
 		testcontainers.WithEnv(map[string]string{
@@ -127,13 +118,16 @@ func startPostgresContainer(ctx context.Context, nw *testcontainers.DockerNetwor
 			wait.ForLog("database system is ready to accept connections").WithOccurrence(1).WithStartupTimeout(10*time.Second),
 		),
 	)
+	require.NoError(t, err, "start db container")
+
+	t.Cleanup(func() { _ = testcontainers.TerminateContainer(c) })
+
+	return c
 }
 
-func startAppContainer(
-	ctx context.Context,
-	repoRoot string,
-	nw *testcontainers.DockerNetwork,
-) (testcontainers.Container, error) {
+func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerNetwork) testcontainers.Container {
+	t.Helper()
+
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			FromDockerfile: testcontainers.FromDockerfile{
@@ -159,5 +153,10 @@ func startAppContainer(
 		Started: true,
 	}
 
-	return testcontainers.GenericContainer(ctx, appReq)
+	c, err := testcontainers.GenericContainer(t.Context(), appReq)
+	require.NoError(t, err, "start app container")
+
+	t.Cleanup(func() { _ = c.Terminate(t.Context()) })
+
+	return c
 }
