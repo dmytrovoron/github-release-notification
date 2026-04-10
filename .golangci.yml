@@ -2,6 +2,8 @@ version: "2"
 run:
   issues-exit-code: 1
   tests: true
+  build-tags:
+    - e2e
 
 linters:
   default: all
@@ -247,6 +249,11 @@ linters:
         linters: [revive]
       - source: "httptest."
         linters: [noctx]
+      - path: _test\.go$
+        linters:
+          - decorder
+          - gosec
+          - wrapcheck
 
 formatters:
   enable:

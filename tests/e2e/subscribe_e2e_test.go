@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,7 +23,28 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+type e2eEnv struct {
+	client             *http.Client
+	baseURL            string
+	databaseURLForTest string
+}
+
 func TestSubscribeEndpointE2E(t *testing.T) {
+	env := setupE2EEnv(t)
+	email := "alice@example.com"
+	repo := "owner/repo"
+
+	postSubscribe(t, env.client, env.baseURL, email, repo, http.StatusOK)
+	postSubscribe(t, env.client, env.baseURL, email, repo, http.StatusConflict)
+
+	activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+
+	assertSingleConfirmedSubscription(t, getSubscriptions(t, env.client, env.baseURL, email), email, repo)
+}
+
+func setupE2EEnv(t *testing.T) e2eEnv {
+	t.Helper()
+
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
@@ -30,7 +53,6 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 
 	ctx := t.Context()
 	repoRoot := findRepoRoot(t)
-
 	githubBaseURL := startGitHubStub(t)
 
 	nw, err := network.New(ctx, network.WithAttachable())
@@ -41,20 +63,7 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 		_ = nw.Remove(ctx)
 	})
 
-	dbC, err := testcontainers.Run(
-		ctx,
-		"postgres:18-alpine",
-		network.WithNetwork([]string{"db"}, nw),
-		testcontainers.WithEnv(map[string]string{
-			"POSTGRES_DB":       "app",
-			"POSTGRES_USER":     "app",
-			"POSTGRES_PASSWORD": "app",
-		}),
-		testcontainers.WithExposedPorts("5432/tcp"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(1).WithStartupTimeout(10*time.Second),
-		),
-	)
+	dbC, err := startPostgresContainer(ctx, nw)
 	if err != nil {
 		t.Fatalf("start db container: %v", err)
 	}
@@ -71,9 +80,53 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 		t.Fatalf("resolve db port: %v", err)
 	}
 
-	databaseURLForApp := "postgres://app:app@db:5432/app?sslmode=disable"
-	databaseURLForTest := fmt.Sprintf("postgres://app:app@%s:%s/app?sslmode=disable", dbHost, dbPort.Port())
+	appC, err := startAppContainer(ctx, repoRoot, nw, githubBaseURL)
+	if err != nil {
+		t.Fatalf("start app container: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = appC.Terminate(ctx)
+	})
 
+	appHost, err := appC.Host(ctx)
+	if err != nil {
+		t.Fatalf("resolve app host: %v", err)
+	}
+	appPort, err := appC.MappedPort(ctx, "8080/tcp")
+	if err != nil {
+		t.Fatalf("resolve app port: %v", err)
+	}
+
+	return e2eEnv{
+		client:             &http.Client{Timeout: 10 * time.Second},
+		baseURL:            fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())),
+		databaseURLForTest: fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port())),
+	}
+}
+
+func startPostgresContainer(ctx context.Context, nw *testcontainers.DockerNetwork) (testcontainers.Container, error) {
+	return testcontainers.Run(
+		ctx,
+		"postgres:18-alpine",
+		network.WithNetwork([]string{"db"}, nw),
+		testcontainers.WithEnv(map[string]string{
+			"POSTGRES_DB":       "app",
+			"POSTGRES_USER":     "app",
+			"POSTGRES_PASSWORD": "app",
+		}),
+		testcontainers.WithExposedPorts("5432/tcp"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(1).WithStartupTimeout(10*time.Second),
+		),
+	)
+}
+
+func startAppContainer(
+	ctx context.Context,
+	repoRoot string,
+	nw *testcontainers.DockerNetwork,
+	githubBaseURL string,
+) (testcontainers.Container, error) {
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			FromDockerfile: testcontainers.FromDockerfile{
@@ -81,7 +134,7 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 				Dockerfile: "Dockerfile",
 			},
 			Env: map[string]string{
-				"DATABASE_URL":          databaseURLForApp,
+				"DATABASE_URL":          "postgres://app:app@db:5432/app?sslmode=disable",
 				"MIGRATIONS_PATH":       "file:///app/migrations",
 				"DATABASE_PING_TIMEOUT": "10s",
 				"GITHUB_API_BASE_URL":   githubBaseURL,
@@ -99,42 +152,21 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 		},
 		Started: true,
 	}
-	appC, err := testcontainers.GenericContainer(ctx, appReq)
-	if err != nil {
-		t.Fatalf("start app container: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = appC.Terminate(ctx)
-	})
 
-	appHost, err := appC.Host(ctx)
-	if err != nil {
-		t.Fatalf("resolve app host: %v", err)
-	}
-	appPort, err := appC.MappedPort(ctx, "8080/tcp")
-	if err != nil {
-		t.Fatalf("resolve app port: %v", err)
-	}
+	return testcontainers.GenericContainer(ctx, appReq)
+}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	baseURL := fmt.Sprintf("http://%s:%s/api", appHost, appPort.Port())
-	email := "alice@example.com"
-	repo := "owner/repo"
+func assertSingleConfirmedSubscription(t *testing.T, items []subscriptionDTO, expectedEmail, expectedRepo string) {
+	t.Helper()
 
-	postSubscribe(t, client, baseURL, email, repo, http.StatusOK)
-	postSubscribe(t, client, baseURL, email, repo, http.StatusConflict)
-
-	activateSubscriptionByEmail(t, databaseURLForTest, email)
-
-	items := getSubscriptions(t, client, baseURL, email)
 	if len(items) != 1 {
 		t.Fatalf("expected 1 active subscription, got %d", len(items))
 	}
-	if items[0].Email != email {
-		t.Fatalf("expected email %q, got %q", email, items[0].Email)
+	if items[0].Email != expectedEmail {
+		t.Fatalf("expected email %q, got %q", expectedEmail, items[0].Email)
 	}
-	if items[0].Repo != repo {
-		t.Fatalf("expected repo %q, got %q", repo, items[0].Repo)
+	if items[0].Repo != expectedRepo {
+		t.Fatalf("expected repo %q, got %q", expectedRepo, items[0].Repo)
 	}
 	if !items[0].Confirmed {
 		t.Fatalf("expected confirmed=true")
@@ -286,7 +318,8 @@ func startGitHubStub(t *testing.T) string {
 	})
 
 	srv := &http.Server{Handler: mux}
-	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	var lcfg net.ListenConfig
+	ln, err := lcfg.Listen(t.Context(), "tcp", "0.0.0.0:0")
 	if err != nil {
 		t.Fatalf("listen github stub: %v", err)
 	}
@@ -299,11 +332,14 @@ func startGitHubStub(t *testing.T) string {
 		_ = srv.Shutdown(t.Context())
 	})
 
-	port := ln.Addr().(*net.TCPAddr).Port
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("resolve github stub port")
+	}
 	host := os.Getenv("E2E_GITHUB_STUB_HOST")
 	if host == "" {
 		host = "host.docker.internal"
 	}
 
-	return fmt.Sprintf("http://%s:%d", host, port)
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(addr.Port))
 }

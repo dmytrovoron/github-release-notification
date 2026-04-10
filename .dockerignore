@@ -1,0 +1,6 @@
+.git
+.vscode
+.golangci.yml
+*.md
+scripts
+.github
