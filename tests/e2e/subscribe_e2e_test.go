@@ -10,9 +10,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/brianvoe/gofakeit/v7"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	// https://github.com/octocat/Hello-World
+	realRepo = "octocat/Hello-World"
 )
 
 type e2eEnv struct {
@@ -23,23 +29,42 @@ type e2eEnv struct {
 
 func TestSubscribeEndpointE2E(t *testing.T) {
 	env := setupE2EEnv(t)
-	email := "alice@example.com"
-	repo := "owner/repo"
 
-	postSubscribe(t, env.client, env.baseURL, email, repo, http.StatusOK)
-	postSubscribe(t, env.client, env.baseURL, email, repo, http.StatusConflict)
+	t.Run("Subscription successful", func(t *testing.T) {
+		email := gofakeit.Email()
 
-	activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusOK)
 
-	expectedItems := []subscriptionDTO{
-		{
-			Email:     email,
-			Repo:      repo,
-			Confirmed: true,
-		},
-	}
-	actualItems := getSubscriptions(t, env.client, env.baseURL, email)
-	assert.Equal(t, expectedItems, actualItems)
+		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+
+		expectedItems := []subscriptionDTO{
+			{
+				Email:     email,
+				Repo:      realRepo,
+				Confirmed: true,
+			},
+		}
+		actualItems := getSubscriptions(t, env.client, env.baseURL, email)
+		assert.Equal(t, expectedItems, actualItems)
+	})
+
+	t.Run("Invalid input", func(t *testing.T) {
+		postSubscribe(t, env.client, env.baseURL, "invalid-email", realRepo, http.StatusBadRequest)
+		postSubscribe(t, env.client, env.baseURL, gofakeit.Email(), "invalid/repo/name/with/slashes", http.StatusBadRequest)
+	})
+
+	t.Run("Repository not found on GitHub", func(t *testing.T) {
+		email := gofakeit.Email()
+
+		postSubscribe(t, env.client, env.baseURL, email, "non-existing/repo-for-test", http.StatusNotFound)
+	})
+
+	t.Run("Email already subscribed to this repository", func(t *testing.T) {
+		email := gofakeit.Email()
+
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusOK)
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusConflict)
+	})
 }
 
 type subscriptionDTO struct {

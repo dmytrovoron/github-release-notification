@@ -3,6 +3,7 @@ module github.com/dmytrovoron/github-release-notification
 go 1.26.0
 
 require (
+	github.com/brianvoe/gofakeit/v7 v7.14.1
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/go-openapi/errors v0.22.7
 	github.com/go-openapi/loads v0.23.3

@@ -58,7 +58,7 @@ func server() {
 	}
 
 	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
-	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout)
+	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout).WithBaseURL(cfg.GitHubAPIBaseURL)
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
 	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient)

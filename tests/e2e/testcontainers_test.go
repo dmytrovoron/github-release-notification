@@ -30,7 +30,6 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 
 	ctx := t.Context()
 	repoRoot := findRepoRoot(t)
-	githubBaseURL := startGitHubStub(t)
 
 	nw, err := network.New(ctx, network.WithAttachable())
 	require.NoError(t, err, "create docker network")
@@ -49,7 +48,7 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 	dbPort, err := dbC.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err, "resolve db port")
 
-	appC, err := startAppContainer(ctx, repoRoot, nw, githubBaseURL)
+	appC, err := startAppContainer(ctx, repoRoot, nw)
 	require.NoError(t, err, "start app container")
 	t.Cleanup(func() {
 		_ = appC.Terminate(ctx)
@@ -134,7 +133,6 @@ func startAppContainer(
 	ctx context.Context,
 	repoRoot string,
 	nw *testcontainers.DockerNetwork,
-	githubBaseURL string,
 ) (testcontainers.Container, error) {
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -146,7 +144,6 @@ func startAppContainer(
 				"DATABASE_URL":          "postgres://app:app@db:5432/app?sslmode=disable",
 				"MIGRATIONS_PATH":       "file:///app/migrations",
 				"DATABASE_PING_TIMEOUT": "10s",
-				"GITHUB_API_BASE_URL":   githubBaseURL,
 				"GITHUB_API_TIMEOUT":    "5s",
 			},
 			ExposedPorts: []string{"8080/tcp"},

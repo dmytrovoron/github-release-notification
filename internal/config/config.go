@@ -12,6 +12,7 @@ type Config struct {
 	MigrationsPath      string        `env:"MIGRATIONS_PATH" envDefault:"file://migrations"`
 	DatabasePingTimeout time.Duration `env:"DATABASE_PING_TIMEOUT" envDefault:"5s"`
 	GitHubAuthToken     string        `env:"GITHUB_AUTH_TOKEN"`
+	GitHubAPIBaseURL    string        `env:"GITHUB_API_BASE_URL" envDefault:"https://api.github.com"`
 	GitHubAPITimeout    time.Duration `env:"GITHUB_API_TIMEOUT" envDefault:"5s"`
 }
 

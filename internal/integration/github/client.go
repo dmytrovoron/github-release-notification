@@ -20,10 +20,20 @@ type Client struct {
 
 func NewClient(authToken string, timeout time.Duration) *Client {
 	authToken = strings.TrimSpace(authToken)
-	httpClient := &http.Client{Timeout: timeout}
-	gh := github.NewClient(httpClient).WithAuthToken(authToken)
+	gh := github.NewClient(&http.Client{Timeout: timeout}).WithAuthToken(authToken)
 
 	return &Client{gh: gh}
+}
+
+func (c *Client) WithBaseURL(baseURL string) *Client {
+	if baseURL != "" {
+		gh, err := c.gh.WithEnterpriseURLs(baseURL, baseURL)
+		if err == nil {
+			c.gh = gh
+		}
+	}
+
+	return c
 }
 
 func (c *Client) RepositoryExists(ctx context.Context, owner, repo string) (bool, error) {

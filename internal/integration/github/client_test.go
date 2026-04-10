@@ -16,6 +16,7 @@ import (
 func TestClient_RepositoryExists(t *testing.T) {
 	t.Parallel()
 
+	// use real GitHub API in integration test
 	authToken := os.Getenv("GITHUB_AUTH_TOKEN")
 	client := github.NewClient(authToken, 10*time.Second)
 
@@ -27,13 +28,13 @@ func TestClient_RepositoryExists(t *testing.T) {
 	}{
 		{
 			name:  "existing repository",
-			owner: "github",
-			repo:  "gitignore",
+			owner: "octocat",
+			repo:  "Hello-World",
 			want:  true,
 		},
 		{
 			name:  "non-existing repository",
-			owner: "github",
+			owner: "octocat",
 			repo:  "non-existing-repository-for-test",
 			want:  false,
 		},

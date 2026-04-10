@@ -4,3 +4,4 @@
 *.md
 scripts
 .github
+/bin

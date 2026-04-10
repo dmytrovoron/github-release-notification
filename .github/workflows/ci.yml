@@ -95,7 +95,9 @@ jobs:
   test-e2e:
     name: Test E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    env:
+      GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -111,6 +113,7 @@ jobs:
   test-integration:
     name: Test Integration
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_AUTH_TOKEN }}
     steps:
