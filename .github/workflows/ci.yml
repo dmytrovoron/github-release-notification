@@ -63,6 +63,21 @@ jobs:
         with:
           version: v2.11
 
+  govulncheck:
+    name: Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1
+        with:
+          go-version-file: go.mod
+          go-package: ./...
+          output-format: json
+          output-file: govulncheck.json
+
+      - name: Enforce govulncheck policy (ignore known false positives)
+        run: ./scripts/check-govulncheck.sh govulncheck.json
+
   test:
     name: Test
     runs-on: ubuntu-latest
