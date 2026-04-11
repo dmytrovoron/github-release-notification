@@ -32,7 +32,7 @@ type SMTPSender struct {
 	cfg SMTPConfig
 }
 
-//nolint:gochecknoglobals,revive // line-length-limit
+//nolint:gochecknoglobals // global template is fine here
 var confirmationTmpl = template.Must(template.New("confirmation").Parse(`<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Confirm your subscription</title></head>
