@@ -256,9 +256,6 @@ linters:
           - decorder
           - gosec
           - wrapcheck
-      - path: _test\.go$
-        text: "get-return:"
-        linters: [revive]
       - path: internal/integration/email/smtp\.go
         text: "line-length-limit:"
         linters: [revive]

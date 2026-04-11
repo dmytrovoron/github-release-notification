@@ -3,9 +3,11 @@
 package e2e
 
 import (
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +18,11 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	subclient "github.com/dmytrovoron/github-release-notification/tests/http/client"
 )
 
-func setupE2EEnv(t *testing.T) e2eEnv {
+func setup(t *testing.T) e2e {
 	t.Helper()
 
 	if testing.Short() {
@@ -49,9 +53,17 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 	appPort, err := appC.MappedPort(ctx, "8080/tcp")
 	require.NoError(t, err, "resolve app port")
 
-	return e2eEnv{
-		baseURL:            fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())),
-		databaseURLForTest: fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port())),
+	databaseURL := fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port()))
+
+	db, err := sql.Open("pgx", databaseURL)
+	require.NoError(t, err, "open db")
+	t.Cleanup(func() { _ = db.Close() })
+
+	client := newTestAPIClient(t, fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())))
+
+	return e2e{
+		client: client,
+		db:     db,
 	}
 }
 
@@ -178,4 +190,24 @@ func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerN
 	t.Cleanup(func() { _ = c.Terminate(t.Context()) })
 
 	return c
+}
+
+func newTestAPIClient(t *testing.T, baseURL string) *subclient.GitHubReleaseNotificationAPI {
+	t.Helper()
+
+	parsedURL, err := url.Parse(baseURL)
+	require.NoError(t, err, "parse api base url")
+	require.NotEmpty(t, parsedURL.Host, "api base url host must not be empty")
+
+	basePath := parsedURL.Path
+	if basePath == "" {
+		basePath = "/"
+	}
+
+	cfg := subclient.DefaultTransportConfig().
+		WithHost(parsedURL.Host).
+		WithBasePath(basePath).
+		WithSchemes([]string{parsedURL.Scheme})
+
+	return subclient.NewHTTPClientWithConfig(nil, cfg)
 }

@@ -18,6 +18,8 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
 )
 
+const maxTokenLength = 8
+
 type GitHubRepositoryChecker interface {
 	RepositoryExists(ctx context.Context, owner, repo string) (bool, error)
 }
@@ -78,22 +80,21 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 		return ErrInvalidRepository
 	}
 
-	owner, repo, _ := strings.Cut(ownerRepo, "/")
-
-	exists, err := s.githubChecker.RepositoryExists(ctx, owner, repo)
-	if err != nil {
-		return fmt.Errorf("check repository in github: %w", err)
-	}
-	if !exists {
-		return ErrRepositoryNotFound
-	}
-
 	alreadySubscribed, err := s.subscriptions.ExistsActiveOrPending(ctx, email, ownerRepo)
 	if err != nil {
 		return fmt.Errorf("check existing subscription: %w", err)
 	}
 	if alreadySubscribed {
 		return ErrSubscriptionConflict
+	}
+
+	owner, repo, _ := strings.Cut(ownerRepo, "/")
+	exists, err := s.githubChecker.RepositoryExists(ctx, owner, repo)
+	if err != nil {
+		return fmt.Errorf("check repository in github: %w", err)
+	}
+	if !exists {
+		return ErrRepositoryNotFound
 	}
 
 	confirmToken, err := generateToken()
@@ -136,8 +137,7 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 }
 
 func (s *SubscriptionService) Confirm(ctx context.Context, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
+	if !isValidToken(token) {
 		return ErrInvalidToken
 	}
 
@@ -160,8 +160,7 @@ func (s *SubscriptionService) Confirm(ctx context.Context, token string) error {
 }
 
 func (s *SubscriptionService) Unsubscribe(ctx context.Context, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
+	if !isValidToken(token) {
 		return ErrInvalidToken
 	}
 
@@ -221,12 +220,22 @@ func isValidRepository(repositoryName string) bool {
 }
 
 func generateToken() (string, error) {
-	buf := make([]byte, 8)
+	buf := make([]byte, maxTokenLength)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate secure token bytes: %w", err)
 	}
 
 	return hex.EncodeToString(buf), nil
+}
+
+func isValidToken(token string) bool {
+	if len(token) != maxTokenLength*2 {
+		return false
+	}
+
+	_, err := hex.DecodeString(token)
+
+	return err == nil
 }
 
 func (s *SubscriptionService) updateStatus(

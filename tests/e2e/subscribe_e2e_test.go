@@ -5,7 +5,6 @@ package e2e
 import (
 	"database/sql"
 	"math/rand/v2"
-	"net/url"
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
@@ -20,67 +19,68 @@ import (
 
 //go:generate go tool -modfile=../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate client --spec ../../api/swagger.yaml --target ../http
 
-type e2eEnv struct {
-	baseURL            string
-	databaseURLForTest string
-}
-
 func TestSubscribeEndpointE2E(t *testing.T) {
-	env := setupE2EEnv(t)
-	api := newTestAPIClient(t, env.baseURL)
+	e := setup(t)
 
 	t.Run("Subscription successful", func(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		subscribe(t, api, email, repo)
+		err := e.subscribe(t, email, repo)
 
-		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
-
-		expectedItems := []*models.Subscription{
-			{
-				Email:     &email,
-				Repo:      &repo,
-				Confirmed: true,
-			},
-		}
-		actualItems := getSubscriptions(t, api, email)
-		assert.Equal(t, expectedItems, actualItems)
+		require.NoError(t, err, "subscribe should succeed")
 	})
 
-	t.Run("Invalid input", func(t *testing.T) {
-		subscribeExpectBadRequest(t, api, "invalid-email", randRealRepo())
-		subscribeExpectBadRequest(t, api, gofakeit.Email(), "invalid/repo/name/with/slashes")
+	t.Run("Invalid input: email", func(t *testing.T) {
+		err := e.subscribe(t, "invalid-email", randRealRepo())
+
+		var badRequest *subscription.SubscribeBadRequest
+		require.ErrorAs(t, err, &badRequest)
+	})
+
+	t.Run("Invalid input: repo", func(t *testing.T) {
+		err := e.subscribe(t, gofakeit.Email(), "invalid/repo/name/with/slashes")
+
+		var badRequest *subscription.SubscribeBadRequest
+		require.ErrorAs(t, err, &badRequest)
 	})
 
 	t.Run("Repository not found on GitHub", func(t *testing.T) {
 		email := gofakeit.Email()
 
-		subscribeExpectNotFound(t, api, email, "non-existing/repo-for-test")
+		err := e.subscribe(t, email, "non-existing/repo-for-test")
+
+		var notFound *subscription.SubscribeNotFound
+		require.ErrorAs(t, err, &notFound)
 	})
 
 	t.Run("Email already subscribed to this repository", func(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		subscribe(t, api, email, repo)
-		subscribeExpectConflict(t, api, email, repo)
+		err := e.subscribe(t, email, repo)
+		require.NoError(t, err, "initial subscribe should succeed")
+
+		err = e.subscribe(t, email, repo)
+		var conflict *subscription.SubscribeConflict
+		require.ErrorAs(t, err, &conflict)
 	})
 }
 
 func TestConfirmEndpointE2E(t *testing.T) {
-	env := setupE2EEnv(t)
-	api := newTestAPIClient(t, env.baseURL)
+	e := setup(t)
 
 	t.Run("Confirm subscription successful", func(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		subscribe(t, api, email, repo)
+		err := e.subscribe(t, email, repo)
+		require.NoError(t, err, "initial subscribe should succeed")
 
-		token := getConfirmTokenByEmail(t, env.databaseURLForTest, email)
+		token := e.getConfirmTokenByEmail(t, email)
 
-		confirm(t, api, token)
+		err = e.confirm(t, token)
+		require.NoError(t, err, "confirm should succeed")
 
 		expectedItems := []*models.Subscription{
 			{
@@ -89,29 +89,36 @@ func TestConfirmEndpointE2E(t *testing.T) {
 				Confirmed: true,
 			},
 		}
-		actualItems := getSubscriptions(t, api, email)
+		actualItems, err := e.getSubscriptions(t, email)
+		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Equal(t, expectedItems, actualItems)
 	})
 
-	t.Run("Token not found", func(t *testing.T) {
-		confirmExpectNotFound(t, api, "nonexistenttoken123")
+	t.Run("Invalid token", func(t *testing.T) {
+		err := e.confirm(t, "abcd")
+
+		var badRequest *subscription.ConfirmSubscriptionBadRequest
+		require.ErrorAs(t, err, &badRequest)
 	})
 
-	t.Run("Empty token", func(t *testing.T) {
-		confirmExpectBadRequest(t, api, " ")
+	t.Run("Token not found", func(t *testing.T) {
+		err := e.confirm(t, "0123456789abcdef")
+
+		var notFound *subscription.ConfirmSubscriptionNotFound
+		require.ErrorAs(t, err, &notFound)
 	})
 }
 
 func TestGetSubscriptionsEndpointE2E(t *testing.T) {
-	env := setupE2EEnv(t)
-	api := newTestAPIClient(t, env.baseURL)
+	e := setup(t)
 
-	t.Run("Get subscriptions successful", func(t *testing.T) {
+	t.Run("Successful operation - list of subscriptions returned", func(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		subscribe(t, api, email, repo)
-		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+		err := e.subscribe(t, email, repo)
+		require.NoError(t, err, "initial subscribe should succeed")
+		e.activateSubscriptionByEmail(t, email)
 
 		expectedItems := []*models.Subscription{
 			{
@@ -121,233 +128,120 @@ func TestGetSubscriptionsEndpointE2E(t *testing.T) {
 			},
 		}
 
-		actualItems := getSubscriptions(t, api, email)
+		actualItems, err := e.getSubscriptions(t, email)
+		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Equal(t, expectedItems, actualItems)
 	})
 
 	t.Run("Invalid email", func(t *testing.T) {
-		getSubscriptionsExpectBadRequest(t, api, "invalid-email")
+		_, err := e.getSubscriptions(t, "invalid-email")
+
+		var badRequest *subscription.GetSubscriptionsBadRequest
+		require.ErrorAs(t, err, &badRequest)
 	})
 }
 
 func TestUnsubscribeEndpointE2E(t *testing.T) {
-	env := setupE2EEnv(t)
-	api := newTestAPIClient(t, env.baseURL)
+	e := setup(t)
 
-	t.Run("Unsubscribe successful", func(t *testing.T) {
+	t.Run("Unsubscribed successful", func(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		subscribe(t, api, email, repo)
-		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+		err := e.subscribe(t, email, repo)
+		require.NoError(t, err, "initial subscribe should succeed")
+		e.activateSubscriptionByEmail(t, email)
 
-		token := getUnsubscribeTokenByEmail(t, env.databaseURLForTest, email)
-		unsubscribe(t, api, token)
+		token := e.getUnsubscribeTokenByEmail(t, email)
+		err = e.unsubscribe(t, token)
+		require.NoError(t, err, "unsubscribe should succeed")
 
-		actualItems := getSubscriptions(t, api, email)
+		actualItems, err := e.getSubscriptions(t, email)
+		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Empty(t, actualItems)
 	})
 
-	t.Run("Token not found", func(t *testing.T) {
-		unsubscribeExpectNotFound(t, api, "nonexistenttoken123")
+	t.Run("Invalid token", func(t *testing.T) {
+		err := e.unsubscribe(t, "abcd")
+
+		var badRequest *subscription.UnsubscribeBadRequest
+		require.ErrorAs(t, err, &badRequest)
 	})
 
-	t.Run("Empty token", func(t *testing.T) {
-		unsubscribeExpectBadRequest(t, api, " ")
+	t.Run("Token not found", func(t *testing.T) {
+		err := e.unsubscribe(t, "fedcba9876543210")
+
+		var notFound *subscription.UnsubscribeNotFound
+		require.ErrorAs(t, err, &notFound)
 	})
 }
 
-func newTestAPIClient(t *testing.T, baseURL string) *subclient.GitHubReleaseNotificationAPI {
+type e2e struct {
+	client *subclient.GitHubReleaseNotificationAPI
+	db     *sql.DB
+}
+
+func (e *e2e) subscribe(t *testing.T, email, repo string) error {
 	t.Helper()
 
-	parsedURL, err := url.Parse(baseURL)
-	require.NoError(t, err, "parse api base url")
-	require.NotEmpty(t, parsedURL.Host, "api base url host must not be empty")
+	params := subscription.NewSubscribeParamsWithContext(t.Context()).WithEmail(email).WithRepo(repo)
+	_, err := e.client.Subscription.Subscribe(params, subscription.WithContentType("application/x-www-form-urlencoded"))
 
-	basePath := parsedURL.Path
-	if basePath == "" {
-		basePath = "/"
+	return err
+}
+
+func (e *e2e) confirm(t *testing.T, token string) error {
+	t.Helper()
+
+	params := subscription.NewConfirmSubscriptionParamsWithContext(t.Context()).WithToken(token)
+	_, err := e.client.Subscription.ConfirmSubscription(params)
+
+	return err
+}
+
+func (e *e2e) unsubscribe(t *testing.T, token string) error {
+	t.Helper()
+
+	params := subscription.NewUnsubscribeParamsWithContext(t.Context()).WithToken(token)
+	_, err := e.client.Subscription.Unsubscribe(params)
+
+	return err
+}
+
+func (e *e2e) getSubscriptions(t *testing.T, email string) ([]*models.Subscription, error) {
+	t.Helper()
+
+	params := subscription.NewGetSubscriptionsParamsWithContext(t.Context()).WithEmail(email)
+	result, err := e.client.Subscription.GetSubscriptions(params)
+	if err != nil {
+		return nil, err
 	}
 
-	cfg := subclient.DefaultTransportConfig().
-		WithHost(parsedURL.Host).
-		WithBasePath(basePath).
-		WithSchemes([]string{parsedURL.Scheme})
-
-	return subclient.NewHTTPClientWithConfig(nil, cfg)
+	return result.Payload, nil
 }
 
-func subscribe(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email, repo string) {
+func (e *e2e) activateSubscriptionByEmail(t *testing.T, email string) {
 	t.Helper()
 
-	params := subscription.NewSubscribeParamsWithContext(t.Context()).
-		WithEmail(email).
-		WithRepo(repo)
-	_, err := api.Subscription.Subscribe(params, subscription.WithContentType("application/x-www-form-urlencoded"))
-	require.NoError(t, err, "subscribe should succeed")
-}
-
-func subscribeExpectBadRequest(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email, repo string) {
-	t.Helper()
-
-	params := subscription.NewSubscribeParamsWithContext(t.Context()).
-		WithEmail(email).
-		WithRepo(repo)
-	_, err := api.Subscription.Subscribe(params, subscription.WithContentType("application/x-www-form-urlencoded"))
-	require.Error(t, err)
-	var badRequest *subscription.SubscribeBadRequest
-	require.ErrorAs(t, err, &badRequest)
-}
-
-func subscribeExpectNotFound(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email, repo string) {
-	t.Helper()
-
-	params := subscription.NewSubscribeParamsWithContext(t.Context()).
-		WithEmail(email).
-		WithRepo(repo)
-	_, err := api.Subscription.Subscribe(params, subscription.WithContentType("application/x-www-form-urlencoded"))
-	require.Error(t, err)
-	var notFound *subscription.SubscribeNotFound
-	require.ErrorAs(t, err, &notFound)
-}
-
-func subscribeExpectConflict(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email, repo string) {
-	t.Helper()
-
-	params := subscription.NewSubscribeParamsWithContext(t.Context()).
-		WithEmail(email).
-		WithRepo(repo)
-	_, err := api.Subscription.Subscribe(params, subscription.WithContentType("application/x-www-form-urlencoded"))
-	require.Error(t, err)
-	var conflict *subscription.SubscribeConflict
-	require.ErrorAs(t, err, &conflict)
-}
-
-func confirm(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewConfirmSubscriptionParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.ConfirmSubscription(params)
-	require.NoError(t, err, "confirm should succeed")
-}
-
-func confirmExpectNotFound(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewConfirmSubscriptionParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.ConfirmSubscription(params)
-	require.Error(t, err)
-	var notFound *subscription.ConfirmSubscriptionNotFound
-	require.ErrorAs(t, err, &notFound)
-}
-
-func confirmExpectBadRequest(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewConfirmSubscriptionParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.ConfirmSubscription(params)
-	require.Error(t, err)
-	var badRequest *subscription.ConfirmSubscriptionBadRequest
-	require.ErrorAs(t, err, &badRequest)
-}
-
-func unsubscribe(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewUnsubscribeParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.Unsubscribe(params)
-	require.NoError(t, err, "unsubscribe should succeed")
-}
-
-func unsubscribeExpectNotFound(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewUnsubscribeParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.Unsubscribe(params)
-	require.Error(t, err)
-	var notFound *subscription.UnsubscribeNotFound
-	require.ErrorAs(t, err, &notFound)
-}
-
-func unsubscribeExpectBadRequest(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, token string) {
-	t.Helper()
-
-	params := subscription.NewUnsubscribeParamsWithContext(t.Context()).WithToken(token)
-	_, err := api.Subscription.Unsubscribe(params)
-	require.Error(t, err)
-	var badRequest *subscription.UnsubscribeBadRequest
-	require.ErrorAs(t, err, &badRequest)
-}
-
-func getSubscriptions(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email string) []*models.Subscription {
-	t.Helper()
-
-	params := subscription.NewGetSubscriptionsParamsWithContext(t.Context()).WithEmail(email)
-	result, err := api.Subscription.GetSubscriptions(params)
-	require.NoError(t, err, "get subscriptions should succeed")
-
-	return result.Payload
-}
-
-func getSubscriptionsExpectBadRequest(t *testing.T, api *subclient.GitHubReleaseNotificationAPI, email string) {
-	t.Helper()
-
-	params := subscription.NewGetSubscriptionsParamsWithContext(t.Context()).WithEmail(email)
-	_, err := api.Subscription.GetSubscriptions(params)
-	require.Error(t, err)
-	var badRequest *subscription.GetSubscriptionsBadRequest
-	require.ErrorAs(t, err, &badRequest)
-}
-
-func activateSubscriptionByEmail(t *testing.T, databaseURL, email string) {
-	t.Helper()
-
-	db, err := sql.Open("pgx", databaseURL)
-	require.NoError(t, err, "open db")
-	defer func() {
-		_ = db.Close()
-	}()
-
-	ctx := t.Context()
-
-	err = db.PingContext(ctx)
-	require.NoError(t, err, "ping db")
-
-	_, err = db.ExecContext(ctx, "UPDATE subscriptions SET status='active' WHERE email=$1", email)
+	_, err := e.db.ExecContext(t.Context(), "UPDATE subscriptions SET status='active' WHERE email=$1", email)
 	require.NoError(t, err, "activate subscription")
 }
 
-func getConfirmTokenByEmail(t *testing.T, databaseURL, email string) string {
+func (e *e2e) getConfirmTokenByEmail(t *testing.T, email string) string {
 	t.Helper()
 
-	db, err := sql.Open("pgx", databaseURL)
-	require.NoError(t, err, "open db")
-	defer func() {
-		_ = db.Close()
-	}()
-
-	ctx := t.Context()
-
 	var token string
-	err = db.QueryRowContext(ctx, "SELECT confirm_token FROM subscriptions WHERE email=$1", email).Scan(&token)
+	err := e.db.QueryRowContext(t.Context(), "SELECT confirm_token FROM subscriptions WHERE email=$1", email).Scan(&token)
 	require.NoError(t, err, "get confirm token")
 
 	return token
 }
 
-func getUnsubscribeTokenByEmail(t *testing.T, databaseURL, email string) string {
+func (e *e2e) getUnsubscribeTokenByEmail(t *testing.T, email string) string {
 	t.Helper()
 
-	db, err := sql.Open("pgx", databaseURL)
-	require.NoError(t, err, "open db")
-	defer func() {
-		_ = db.Close()
-	}()
-
-	ctx := t.Context()
-
 	var token string
-	err = db.QueryRowContext(ctx, "SELECT unsubscribe_token FROM subscriptions WHERE email=$1", email).Scan(&token)
+	err := e.db.QueryRowContext(t.Context(), "SELECT unsubscribe_token FROM subscriptions WHERE email=$1", email).Scan(&token)
 	require.NoError(t, err, "get unsubscribe token")
 
 	return token
