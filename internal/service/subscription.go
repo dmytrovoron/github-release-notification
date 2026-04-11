@@ -221,7 +221,7 @@ func isValidRepository(repositoryName string) bool {
 }
 
 func generateToken() (string, error) {
-	buf := make([]byte, 32)
+	buf := make([]byte, 8)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate secure token bytes: %w", err)
 	}

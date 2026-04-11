@@ -48,7 +48,7 @@ var confirmationTmpl = template.Must(template.New("confirmation").Parse(`<!DOCTY
     </a>
   </p>
   <p>Or copy and paste this token into the confirmation endpoint:</p>
-  <pre style="background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:12px 16px;font-size:14px;word-break:break-all">{{.ConfirmToken}}</pre>
+  <pre style="background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:12px 16px;font-size:14px;overflow-wrap:break-word;white-space:pre-wrap;display:inline-block">{{.ConfirmToken}}</pre>
   <p style="color:#888;font-size:12px">If you did not request this, you can safely ignore this email.</p>
 </body>
 </html>`))
