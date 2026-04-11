@@ -50,7 +50,6 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 	require.NoError(t, err, "resolve app port")
 
 	return e2eEnv{
-		client:             &http.Client{Timeout: 10 * time.Second},
 		baseURL:            fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())),
 		databaseURLForTest: fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port())),
 	}
