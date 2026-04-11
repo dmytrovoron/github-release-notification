@@ -125,6 +125,31 @@ func TestGetSubscriptionsEndpointE2E(t *testing.T) {
 	})
 }
 
+func TestUnsubscribeEndpointE2E(t *testing.T) {
+	env := setupE2EEnv(t)
+
+	t.Run("Unsubscribe successful", func(t *testing.T) {
+		email := gofakeit.Email()
+
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusOK)
+		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+
+		token := getUnsubscribeTokenByEmail(t, env.databaseURLForTest, email)
+		getUnsubscribe(t, env.client, env.baseURL, token, http.StatusOK)
+
+		actualItems := getSubscriptions(t, env.client, env.baseURL, email)
+		assert.Empty(t, actualItems)
+	})
+
+	t.Run("Token not found", func(t *testing.T) {
+		getUnsubscribe(t, env.client, env.baseURL, "nonexistenttoken123", http.StatusNotFound)
+	})
+
+	t.Run("Empty token", func(t *testing.T) {
+		getUnsubscribe(t, env.client, env.baseURL, "%20", http.StatusBadRequest)
+	})
+}
+
 type subscriptionDTO struct {
 	Email     string `json:"email"`
 	Repo      string `json:"repo"`
@@ -164,6 +189,21 @@ func getConfirm(t *testing.T, client *http.Client, baseURL, token string, expect
 	}()
 
 	require.Equal(t, expectedCode, resp.StatusCode, "unexpected confirm status")
+}
+
+func getUnsubscribe(t *testing.T, client *http.Client, baseURL, token string, expectedCode int) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/unsubscribe/"+token, http.NoBody)
+	require.NoError(t, err, "build unsubscribe request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "do unsubscribe request")
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	require.Equal(t, expectedCode, resp.StatusCode, "unexpected unsubscribe status")
 }
 
 func getSubscriptions(t *testing.T, client *http.Client, baseURL, email string) []subscriptionDTO {
@@ -240,6 +280,24 @@ func getConfirmTokenByEmail(t *testing.T, databaseURL, email string) string {
 	var token string
 	err = db.QueryRowContext(ctx, "SELECT confirm_token FROM subscriptions WHERE email=$1", email).Scan(&token)
 	require.NoError(t, err, "get confirm token")
+
+	return token
+}
+
+func getUnsubscribeTokenByEmail(t *testing.T, databaseURL, email string) string {
+	t.Helper()
+
+	db, err := sql.Open("pgx", databaseURL)
+	require.NoError(t, err, "open db")
+	defer func() {
+		_ = db.Close()
+	}()
+
+	ctx := t.Context()
+
+	var token string
+	err = db.QueryRowContext(ctx, "SELECT unsubscribe_token FROM subscriptions WHERE email=$1", email).Scan(&token)
+	require.NoError(t, err, "get unsubscribe token")
 
 	return token
 }
