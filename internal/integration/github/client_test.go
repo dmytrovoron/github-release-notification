@@ -16,8 +16,11 @@ import (
 func TestClient_RepositoryExists(t *testing.T) {
 	t.Parallel()
 
-	// use real GitHub API in integration test
 	authToken := os.Getenv("GITHUB_AUTH_TOKEN")
+	if authToken == "" {
+		t.Skip("Set GITHUB_AUTH_TOKEN environment variable to run this test")
+	}
+
 	client := github.NewClient(authToken, 10*time.Second)
 
 	tests := []struct {
