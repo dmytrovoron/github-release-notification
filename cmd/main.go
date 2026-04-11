@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"log/slog"
+	"net/url"
 	"os"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/integration/github"
 	"github.com/dmytrovoron/github-release-notification/internal/migrations"
+	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository/postgres"
 	"github.com/dmytrovoron/github-release-notification/internal/service"
 )
@@ -64,10 +66,30 @@ func server() {
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
-	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, logger)
+	notif := notifier.NewNotifier(
+		logger,
+		notifier.NotifierConfig{
+			SMTPHost:     cfg.SMTPHost,
+			SMTPPort:     cfg.SMTPPort,
+			SMTPFrom:     cfg.SMTPFrom,
+			SMTPUsername: cfg.SMTPUsername,
+			SMTPPassword: cfg.SMTPPassword,
+		},
+	)
+
+	// TODO: this is a dirty workaround to build the confirm URL base.
+	// Ideally, the confirm path ("/confirm") should be derived from the generated
+	// ConfirmSubscriptionURL, but it requires a non-empty token to produce a valid URL.
+	// Instead, we manually replicate the path segment and join it with the swagger base path.
+	confirmURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "confirm")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, logger, confirmURLBase)
 	restapi.NewSubscriptionHandler(subscriptionService).Register(api)
 
 	server := restapi.NewServer(api)
+	server.EnabledListeners = []string{cfg.Scheme}
 	server.SetHandler(restapi.NewHandler(api, func(checkCtx context.Context) error {
 		pingCtx, pingCancel := context.WithTimeout(checkCtx, 2*time.Second)
 		defer pingCancel()

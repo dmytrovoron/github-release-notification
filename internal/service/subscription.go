@@ -9,15 +9,21 @@ import (
 	"fmt"
 	"log/slog"
 	"net/mail"
+	"net/url"
 	"regexp"
 	"strings"
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
+	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
 )
 
 type GitHubRepositoryChecker interface {
 	RepositoryExists(ctx context.Context, owner, repo string) (bool, error)
+}
+
+type ConfirmationSender interface {
+	SendConfirmation(ctx context.Context, email notifier.ConfirmationEmail) error
 }
 
 type SubscriptionRepository interface {
@@ -30,9 +36,11 @@ type SubscriptionRepository interface {
 }
 
 type SubscriptionService struct {
-	subscriptions SubscriptionRepository
-	githubChecker GitHubRepositoryChecker
-	log           *slog.Logger
+	subscriptions      SubscriptionRepository
+	githubChecker      GitHubRepositoryChecker
+	confirmationSender ConfirmationSender
+	log                *slog.Logger
+	confirmURLBase     string
 }
 
 var (
@@ -49,12 +57,16 @@ var repositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 func NewSubscriptionService(
 	subscriptions SubscriptionRepository,
 	githubChecker GitHubRepositoryChecker,
+	confirmationSender ConfirmationSender,
 	log *slog.Logger,
+	confirmURLBase string,
 ) *SubscriptionService {
 	return &SubscriptionService{
-		subscriptions: subscriptions,
-		githubChecker: githubChecker,
-		log:           log,
+		subscriptions:      subscriptions,
+		githubChecker:      githubChecker,
+		confirmationSender: confirmationSender,
+		log:                log,
+		confirmURLBase:     confirmURLBase,
 	}
 }
 
@@ -93,6 +105,11 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 		return err
 	}
 
+	confirmURL, err := url.JoinPath(s.confirmURLBase, confirmToken)
+	if err != nil {
+		return fmt.Errorf("build confirm url: %w", err)
+	}
+
 	_, err = s.subscriptions.Create(ctx, &repository.Subscription{
 		Email:            email,
 		Repository:       ownerRepo,
@@ -104,12 +121,16 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 		return fmt.Errorf("create subscription: %w", err)
 	}
 
-	s.log.InfoContext(ctx, "subscription created",
-		"email", email,
-		"repository", ownerRepo,
-		"confirmToken", confirmToken,
-		"unsubscribeToken", unsubscribeToken,
-	)
+	err = s.confirmationSender.SendConfirmation(ctx, notifier.ConfirmationEmail{
+		Email:        email,
+		Repository:   ownerRepo,
+		ConfirmToken: confirmToken,
+		ConfirmURL:   confirmURL,
+	})
+	if err != nil {
+		// Log email failure but don't fail the subscription creation
+		s.log.ErrorContext(ctx, "failed to send confirmation email", "email", email, "repo", ownerRepo, "error", err)
+	}
 
 	return nil
 }

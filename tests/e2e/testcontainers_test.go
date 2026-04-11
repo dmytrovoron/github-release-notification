@@ -35,6 +35,7 @@ func setupE2EEnv(t *testing.T) e2eEnv {
 	t.Cleanup(func() { _ = nw.Remove(ctx) })
 
 	dbC := startPostgresContainer(t, nw)
+	startSMTPContainer(t, nw)
 
 	dbHost, err := dbC.Host(ctx)
 	require.NoError(t, err, "resolve db host")
@@ -125,6 +126,23 @@ func startPostgresContainer(t *testing.T, nw *testcontainers.DockerNetwork) test
 	return c
 }
 
+func startSMTPContainer(t *testing.T, nw *testcontainers.DockerNetwork) testcontainers.Container {
+	t.Helper()
+
+	c, err := testcontainers.Run(
+		t.Context(),
+		"axllent/mailpit:v1.27",
+		network.WithNetwork([]string{"smtp"}, nw),
+		testcontainers.WithExposedPorts("1025/tcp"),
+		testcontainers.WithWaitStrategy(wait.ForListeningPort("1025/tcp").WithStartupTimeout(20*time.Second)),
+	)
+	require.NoError(t, err, "start smtp container")
+
+	t.Cleanup(func() { _ = testcontainers.TerminateContainer(c) })
+
+	return c
+}
+
 func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerNetwork) testcontainers.Container {
 	t.Helper()
 
@@ -139,6 +157,8 @@ func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerN
 				"MIGRATIONS_PATH":       "file:///app/migrations",
 				"DATABASE_PING_TIMEOUT": "10s",
 				"GITHUB_API_TIMEOUT":    "5s",
+				"SMTP_HOST":             "smtp",
+				"SMTP_PORT":             "1025",
 			},
 			ExposedPorts: []string{"8080/tcp"},
 			WaitingFor: wait.ForHTTP("/healthz").

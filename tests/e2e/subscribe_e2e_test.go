@@ -67,6 +67,38 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 }
 
+func TestConfirmEndpointE2E(t *testing.T) {
+	env := setupE2EEnv(t)
+
+	t.Run("Confirm subscription successful", func(t *testing.T) {
+		email := gofakeit.Email()
+
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusOK)
+
+		token := getConfirmTokenByEmail(t, env.databaseURLForTest, email)
+
+		getConfirm(t, env.client, env.baseURL, token, http.StatusOK)
+
+		expectedItems := []subscriptionDTO{
+			{
+				Email:     email,
+				Repo:      realRepo,
+				Confirmed: true,
+			},
+		}
+		actualItems := getSubscriptions(t, env.client, env.baseURL, email)
+		assert.Equal(t, expectedItems, actualItems)
+	})
+
+	t.Run("Token not found", func(t *testing.T) {
+		getConfirm(t, env.client, env.baseURL, "nonexistenttoken123", http.StatusNotFound)
+	})
+
+	t.Run("Empty token", func(t *testing.T) {
+		getConfirm(t, env.client, env.baseURL, "%20", http.StatusBadRequest)
+	})
+}
+
 type subscriptionDTO struct {
 	Email     string `json:"email"`
 	Repo      string `json:"repo"`
@@ -91,6 +123,21 @@ func postSubscribe(t *testing.T, client *http.Client, baseURL, email, repo strin
 	}()
 
 	require.Equal(t, expectedCode, resp.StatusCode, "unexpected subscribe status")
+}
+
+func getConfirm(t *testing.T, client *http.Client, baseURL, token string, expectedCode int) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/confirm/"+token, http.NoBody)
+	require.NoError(t, err, "build confirm request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "do confirm request")
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	require.Equal(t, expectedCode, resp.StatusCode, "unexpected confirm status")
 }
 
 func getSubscriptions(t *testing.T, client *http.Client, baseURL, email string) []subscriptionDTO {
@@ -133,4 +180,22 @@ func activateSubscriptionByEmail(t *testing.T, databaseURL, email string) {
 
 	_, err = db.ExecContext(ctx, "UPDATE subscriptions SET status='active' WHERE email=$1", email)
 	require.NoError(t, err, "activate subscription")
+}
+
+func getConfirmTokenByEmail(t *testing.T, databaseURL, email string) string {
+	t.Helper()
+
+	db, err := sql.Open("pgx", databaseURL)
+	require.NoError(t, err, "open db")
+	defer func() {
+		_ = db.Close()
+	}()
+
+	ctx := t.Context()
+
+	var token string
+	err = db.QueryRowContext(ctx, "SELECT confirm_token FROM subscriptions WHERE email=$1", email).Scan(&token)
+	require.NoError(t, err, "get confirm token")
+
+	return token
 }

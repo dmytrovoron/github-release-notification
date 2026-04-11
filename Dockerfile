@@ -21,5 +21,8 @@ USER app
 
 EXPOSE 8080
 
+ENV SCHEME=http
+ENV HOST=0.0.0.0
+ENV PORT=8080
+
 ENTRYPOINT ["/app/github-release-notification"]
-CMD ["--scheme=http", "--host=0.0.0.0", "--port=8080"]

@@ -14,6 +14,13 @@ type Config struct {
 	GitHubAuthToken     string        `env:"GITHUB_AUTH_TOKEN"`
 	GitHubAPIBaseURL    string        `env:"GITHUB_API_BASE_URL" envDefault:"https://api.github.com"`
 	GitHubAPITimeout    time.Duration `env:"GITHUB_API_TIMEOUT" envDefault:"5s"`
+	SMTPHost            string        `env:"SMTP_HOST" envDefault:"localhost"`
+	SMTPPort            int           `env:"SMTP_PORT" envDefault:"1025"`
+	SMTPFrom            string        `env:"SMTP_FROM" envDefault:"no-reply@github-release-notification.local"`
+	SMTPUsername        string        `env:"SMTP_USERNAME"`
+	SMTPPassword        string        `env:"SMTP_PASSWORD"`
+	AppBaseURL          string        `env:"APP_BASE_URL" envDefault:"http://localhost:8080"`
+	Scheme              string        `env:"SCHEME" envDefault:"http"`
 }
 
 // Load reads environment variables into Config.
