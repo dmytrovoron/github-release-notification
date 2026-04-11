@@ -99,6 +99,32 @@ func TestConfirmEndpointE2E(t *testing.T) {
 	})
 }
 
+func TestGetSubscriptionsEndpointE2E(t *testing.T) {
+	env := setupE2EEnv(t)
+
+	t.Run("Get subscriptions successful", func(t *testing.T) {
+		email := gofakeit.Email()
+
+		postSubscribe(t, env.client, env.baseURL, email, realRepo, http.StatusOK)
+		activateSubscriptionByEmail(t, env.databaseURLForTest, email)
+
+		expectedItems := []subscriptionDTO{
+			{
+				Email:     email,
+				Repo:      realRepo,
+				Confirmed: true,
+			},
+		}
+
+		actualItems := getSubscriptions(t, env.client, env.baseURL, email)
+		assert.Equal(t, expectedItems, actualItems)
+	})
+
+	t.Run("Invalid email", func(t *testing.T) {
+		getSubscriptionsExpectStatus(t, env.client, env.baseURL, "invalid-email", http.StatusBadRequest)
+	})
+}
+
 type subscriptionDTO struct {
 	Email     string `json:"email"`
 	Repo      string `json:"repo"`
@@ -162,6 +188,24 @@ func getSubscriptions(t *testing.T, client *http.Client, baseURL, email string) 
 	require.NoError(t, err, "decode subscriptions response")
 
 	return payload
+}
+
+func getSubscriptionsExpectStatus(t *testing.T, client *http.Client, baseURL, email string, expectedCode int) {
+	t.Helper()
+
+	query := url.Values{}
+	query.Set("email", email)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/subscriptions?"+query.Encode(), http.NoBody)
+	require.NoError(t, err, "build subscriptions request")
+
+	resp, err := client.Do(req)
+	require.NoError(t, err, "do subscriptions request")
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	require.Equal(t, expectedCode, resp.StatusCode, "unexpected subscriptions status")
 }
 
 func activateSubscriptionByEmail(t *testing.T, databaseURL, email string) {

@@ -256,7 +256,8 @@ linters:
           - decorder
           - gosec
           - wrapcheck
-      - text: "get-return: function 'getConfirm' seems to be a getter but it does not return any result"
+      - path: _test\.go$
+        text: "get-return:"
         linters: [revive]
 
 formatters:
