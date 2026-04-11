@@ -44,8 +44,12 @@ func (c *Client) RepositoryExists(ctx context.Context, owner, repo string) (bool
 
 	errResp, ok := errors.AsType[*github.ErrorResponse](err)
 	if !ok {
-		return false, fmt.Errorf("unexpected error type: %w", err)
+		return false, fmt.Errorf("unexpected github error type: %w", err)
 	}
 
-	return errResp.Response.StatusCode != http.StatusNotFound, nil
+	if errResp.Response.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("unexpected github error: %w", err)
 }

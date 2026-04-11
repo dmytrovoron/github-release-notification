@@ -49,7 +49,7 @@ func TestClient_RepositoryExists(t *testing.T) {
 
 			got, err := client.RepositoryExists(t.Context(), tc.owner, tc.repo)
 			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
+			assert.Equalf(t, tc.want, got, "RepositoryExists(%q, %q) = %v, want %v", tc.owner, tc.repo, got, tc.want)
 		})
 	}
 }
