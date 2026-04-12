@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_subscriptions_email_repository;
+DROP INDEX IF EXISTS idx_subscriptions_email_status_created_at;
+DROP INDEX IF EXISTS idx_subscriptions_status_repository;
