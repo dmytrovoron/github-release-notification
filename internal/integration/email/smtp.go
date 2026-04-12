@@ -3,6 +3,7 @@ package email
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -40,42 +41,17 @@ type SMTPSender struct {
 	cfg SMTPConfig
 }
 
-//nolint:gochecknoglobals // global template is fine here
-var confirmationTmpl = template.Must(template.New("confirmation").Parse(`<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Confirm your subscription</title></head>
-<body style="font-family:sans-serif;color:#222;max-width:600px;margin:40px auto;padding:0 16px">
-  <h2>Confirm your GitHub release subscription</h2>
-  <p>Hello,</p>
-  <p>You subscribed to release notifications for <strong><a href="https://github.com/{{.Repository}}">{{.Repository}}</a></strong>.</p>
-  <p>Click the button below to confirm your subscription:</p>
-  <p>
-    <a href="{{.ConfirmURL}}"
-       style="display:inline-block;padding:12px 24px;background:#238636;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold">
-      Confirm subscription
-    </a>
-  </p>
-  <p>Or copy and paste this token into the confirmation endpoint:</p>
-  <pre style="background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:12px 16px;font-size:14px;overflow-wrap:break-word;white-space:pre-wrap;display:inline-block">{{.ConfirmToken}}</pre>
-  <p style="color:#888;font-size:12px">If you did not request this, you can safely ignore this email.</p>
-</body>
-</html>`))
+//go:embed templates/confirmation.html
+var confirmationTmplContent string
+
+//go:embed templates/release.html
+var releaseTmplContent string
 
 //nolint:gochecknoglobals // global template is fine here
-var releaseTmpl = template.Must(template.New("release").Parse(`<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>New release available</title></head>
-<body style="font-family:sans-serif;color:#222;max-width:600px;margin:40px auto;padding:0 16px">
-	<h2>New GitHub release detected</h2>
-	<p>Hello,</p>
-	<p><strong><a href="https://github.com/{{.Repository}}">{{.Repository}}</a></strong> published a new release:</p>
-	<p style="font-size:18px"><code>{{.Tag}}</code></p>
-	<p style="color:#888;font-size:12px">You are receiving this because you subscribed to release notifications for this repository.</p>
-	<p>
-		<a href="{{.UnsubscribeURL}}" style="color:#57606a;text-decoration:underline">Unsubscribe from these notifications</a>
-	</p>
-</body>
-</html>`))
+var confirmationTmpl = template.Must(template.New("confirmation").Parse(confirmationTmplContent))
+
+//nolint:gochecknoglobals // global template is fine here
+var releaseTmpl = template.Must(template.New("release").Parse(releaseTmplContent))
 
 func NewSMTPSender(log *slog.Logger, cfg SMTPConfig) *SMTPSender {
 	return &SMTPSender{
