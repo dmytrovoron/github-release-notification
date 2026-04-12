@@ -71,9 +71,7 @@ Flow summary:
 
 Base path: `/api`
 
-Open the Swagger documentation to view available API operations:
-
-- http://localhost:8080/api/docs
+Open the Swagger documentation http://localhost:8080/api/docs to view available API operations:
 
 <img src="docs/api_docs.png" alt="Swagger API Documentation" width="50%" />
 
