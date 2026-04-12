@@ -15,8 +15,7 @@ import (
 )
 
 func TestNotifierE2E(t *testing.T) {
-	t.Setenv("NOTIFIER_INTERVAL", "2s")
-	e := setup(t)
+	t.Parallel()
 
 	t.Run("pending subscription receives release notification email", func(t *testing.T) {
 		email := gofakeit.Email()

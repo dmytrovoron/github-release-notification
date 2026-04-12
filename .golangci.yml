@@ -26,6 +26,7 @@ linters:
     - paralleltest
     - tagalign
     - testpackage
+    - tparallel
     - varnamelen
     - wastedassign
     - wsl

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
+	gh "github.com/google/go-github/v84/github"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,9 +21,11 @@ import (
 //go:generate go tool -modfile=../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate client --spec ../../api/swagger.yaml --target ../http
 
 func TestSubscribeEndpointE2E(t *testing.T) {
-	e := setup(t)
+	t.Parallel()
 
 	t.Run("Subscription successful", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
@@ -32,6 +35,8 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid input: email", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.subscribe(t, "invalid-email", randRealRepo())
 
 		var badRequest *subscription.SubscribeBadRequest
@@ -39,6 +44,8 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid input: repo", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.subscribe(t, gofakeit.Email(), "invalid/repo/name/with/slashes")
 
 		var badRequest *subscription.SubscribeBadRequest
@@ -46,6 +53,8 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Repository not found on GitHub", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 
 		err := e.subscribe(t, email, "non-existing/repo-for-test")
@@ -55,6 +64,8 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Email already subscribed to this repository", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
@@ -68,9 +79,11 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 }
 
 func TestConfirmEndpointE2E(t *testing.T) {
-	e := setup(t)
+	t.Parallel()
 
 	t.Run("Confirm subscription successful", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
@@ -95,6 +108,8 @@ func TestConfirmEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid token", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.confirm(t, "abcd")
 
 		var badRequest *subscription.ConfirmSubscriptionBadRequest
@@ -102,6 +117,8 @@ func TestConfirmEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Token not found", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.confirm(t, "0123456789abcdef")
 
 		var notFound *subscription.ConfirmSubscriptionNotFound
@@ -110,9 +127,11 @@ func TestConfirmEndpointE2E(t *testing.T) {
 }
 
 func TestGetSubscriptionsEndpointE2E(t *testing.T) {
-	e := setup(t)
+	t.Parallel()
 
 	t.Run("Successful operation - list of subscriptions returned", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
@@ -134,6 +153,8 @@ func TestGetSubscriptionsEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid email", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := e.getSubscriptions(t, "invalid-email")
 
 		var badRequest *subscription.GetSubscriptionsBadRequest
@@ -142,9 +163,11 @@ func TestGetSubscriptionsEndpointE2E(t *testing.T) {
 }
 
 func TestUnsubscribeEndpointE2E(t *testing.T) {
-	e := setup(t)
+	t.Parallel()
 
 	t.Run("Unsubscribed successful", func(t *testing.T) {
+		t.Parallel()
+
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
@@ -162,6 +185,8 @@ func TestUnsubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Invalid token", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.unsubscribe(t, "abcd")
 
 		var badRequest *subscription.UnsubscribeBadRequest
@@ -169,6 +194,8 @@ func TestUnsubscribeEndpointE2E(t *testing.T) {
 	})
 
 	t.Run("Token not found", func(t *testing.T) {
+		t.Parallel()
+
 		err := e.unsubscribe(t, "fedcba9876543210")
 
 		var notFound *subscription.UnsubscribeNotFound
@@ -180,6 +207,7 @@ type e2e struct {
 	client         *subclient.GitHubReleaseNotificationAPI
 	db             *sql.DB
 	smtpAPIBaseURL string
+	gh             *gh.Client
 }
 
 func (e *e2e) subscribe(t *testing.T, email, repo string) error {

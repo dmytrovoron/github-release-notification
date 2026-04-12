@@ -19,7 +19,7 @@ import (
 const scannerE2ERepository = "dmytrovoron/github-release-notification-e2e-test"
 
 func TestScannerE2E(t *testing.T) {
-	e := setupScanner(t)
+	t.Parallel()
 
 	t.Run("repository tag changed updates repository state in database", func(t *testing.T) {
 		email := gofakeit.Email()
@@ -41,21 +41,21 @@ func TestScannerE2E(t *testing.T) {
 	})
 }
 
-func (e *e2eScanner) requireRepositoryAccess(t *testing.T, repositoryName string) {
-	t.Helper()
-
+func (e *e2e) requireRepositoryAccess(ctx context.Context, repositoryName string) error {
 	owner, repo, ok := strings.Cut(repositoryName, "/")
-	require.True(t, ok, "repository name must be owner/repo")
+	if !ok {
+		return fmt.Errorf("repository name must be owner/repo, got %q", repositoryName)
+	}
 
-	_, resp, err := e.gh.Repositories.Get(t.Context(), owner, repo)
+	_, resp, err := e.gh.Repositories.Get(ctx, owner, repo)
 	if err == nil {
-		return
+		return nil
 	}
 
 	if ghErr, ok := errors.AsType[*gh.ErrorResponse](err); ok {
 		switch ghErr.Response.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-			t.Fatalf(
+			return fmt.Errorf(
 				"GITHUB_AUTH_TOKEN must have read and write access to %s (github status %d)",
 				repositoryName,
 				ghErr.Response.StatusCode,
@@ -65,12 +65,13 @@ func (e *e2eScanner) requireRepositoryAccess(t *testing.T, repositoryName string
 	}
 
 	if resp != nil {
-		t.Fatalf("verify repository access for %s: %v (status %d)", repositoryName, err, resp.StatusCode)
+		return fmt.Errorf("verify repository access for %s: %w (status %d)", repositoryName, err, resp.StatusCode)
 	}
-	t.Fatalf("verify repository access for %s: %v", repositoryName, err)
+
+	return fmt.Errorf("verify repository access for %s: %w", repositoryName, err)
 }
 
-func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag string) {
+func (e *e2e) createGitHubRelease(t *testing.T, repositoryName, tag string) {
 	t.Helper()
 
 	owner, repo, ok := strings.Cut(repositoryName, "/")
@@ -87,7 +88,7 @@ func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag strin
 	t.Cleanup(func() { e.cleanupDeleteGitHubRelease(t, scannerE2ERepository, created.GetID(), tag) })
 }
 
-func (e *e2eScanner) cleanupDeleteGitHubRelease(t *testing.T, repositoryName string, releaseID int64, tag string) {
+func (e *e2e) cleanupDeleteGitHubRelease(t *testing.T, repositoryName string, releaseID int64, tag string) {
 	t.Helper()
 
 	//nolint:usetesting // context.Background is used intentionally instead of t.Context
