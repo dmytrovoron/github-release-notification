@@ -16,6 +16,11 @@ type NotifierRepository interface {
 	MarkNotified(ctx context.Context, subscriptionID int64, tag string) error
 }
 
+// ReleaseSender is the minimal capability Runner needs from a notifier.
+type ReleaseSender interface {
+	SendRelease(ctx context.Context, email ReleaseEmail) error
+}
+
 type notifyStats struct {
 	pending          int
 	sent             int
@@ -28,7 +33,7 @@ type notifyStats struct {
 type Runner struct {
 	log                *slog.Logger
 	repo               NotifierRepository
-	notifier           *Notifier
+	notifier           ReleaseSender
 	interval           time.Duration
 	unsubscribeURLBase string
 }
@@ -36,7 +41,7 @@ type Runner struct {
 func NewRunner(
 	log *slog.Logger,
 	repo NotifierRepository,
-	notifier *Notifier,
+	notifier ReleaseSender,
 	interval time.Duration,
 	unsubscribeURLBase string,
 ) *Runner {
