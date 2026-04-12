@@ -3,9 +3,11 @@ package restapi
 import (
 	"cmp"
 	"fmt"
+	"maps"
 	"net/http"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,10 +63,7 @@ func (m *metricsRegistry) renderPrometheus() string {
 	inflight := max(m.inflight.Load(), 0)
 
 	m.mu.Lock()
-	requestKeys := make([]requestMetricKey, 0, len(m.requests))
-	for key := range m.requests {
-		requestKeys = append(requestKeys, key)
-	}
+	requestKeys := slices.Collect(maps.Keys(m.requests))
 
 	slices.SortFunc(requestKeys, func(a, b requestMetricKey) int {
 		return cmp.Or(cmp.Compare(a.path, b.path), cmp.Compare(a.method, b.method), cmp.Compare(a.status, b.status))
@@ -143,7 +142,7 @@ func metricsMiddleware(registry *metricsRegistry) func(http.Handler) http.Handle
 }
 
 func renderRequestLabels(key requestMetricKey) string {
-	return fmt.Sprintf("method=%q,path=%q,status=%d", escapeLabelValue(key.method), escapeLabelValue(key.path), key.status)
+	return fmt.Sprintf("method=%q,path=%q,status=%q", escapeLabelValue(key.method), escapeLabelValue(key.path), escapeLabelValue(strconv.Itoa(key.status)))
 }
 
 func escapeLabelValue(value string) string {
