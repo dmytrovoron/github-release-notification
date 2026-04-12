@@ -1,0 +1,177 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: sans-serif;
+  color: #222;
+  background: #f6f8fa;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 32px 40px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.logo svg {
+  fill: #222;
+}
+
+h2 {
+  font-size: 18px;
+  font-weight: bold;
+  color: #222;
+}
+
+p.subtitle {
+  font-size: 14px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.form-group {
+  margin-top: 16px;
+}
+
+label {
+  display: block;
+  font-size: 14px;
+  color: #222;
+  margin-bottom: 6px;
+}
+
+input[type="email"],
+input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  color: #222;
+  font-size: 14px;
+  outline: none;
+}
+
+input:focus {
+  border-color: #0969da;
+}
+
+.hint {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+.hint code {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+.field-error {
+  display: block;
+  font-size: 12px;
+  color: #cf222e;
+  margin-top: 4px;
+  min-height: 16px;
+}
+
+input.input-error {
+  border-color: #cf222e;
+}
+
+.btn {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 10px 24px;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: #2ea043;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.alert {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  display: none;
+}
+
+.alert.success {
+  background: #f0fff4;
+  border: 1px solid #238636;
+  color: #1a7f37;
+  display: block;
+}
+
+.alert.error {
+  background: #fff8f7;
+  border: 1px solid #cf222e;
+  color: #cf222e;
+  display: block;
+}
+
+.alert.info {
+  background: #f0f6ff;
+  border: 1px solid #0969da;
+  color: #0550ae;
+  display: block;
+}
+
+.confirm-icon {
+  text-align: center;
+  font-size: 56px;
+  margin-bottom: 16px;
+}
+
+p.muted {
+  color: #888;
+  font-size: 12px;
+}
+
+#confirmSection {
+  display: none;
+}
+
+#unsubscribeSection {
+  display: none;
+}
+
+#subscribeSection {
+  display: block;
+}

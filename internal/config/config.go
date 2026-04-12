@@ -23,7 +23,7 @@ type Config struct {
 	GitHubAPITimeout time.Duration `env:"GITHUB_API_TIMEOUT" envDefault:"5s"`
 
 	// SMTP
-	SMTPHost     string `env:"SMTP_HOST" envDefault:"localhost"`
+	SMTPHost     string `env:"SMTP_HOST" envDefault:"smtp"`
 	SMTPPort     int    `env:"SMTP_PORT" envDefault:"1025"`
 	SMTPFrom     string `env:"SMTP_FROM" envDefault:"no-reply@github-release-notification.local"`
 	SMTPUsername string `env:"SMTP_USERNAME"`

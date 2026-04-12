@@ -3,9 +3,11 @@ package restapi
 import (
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/runtime"
@@ -16,6 +18,15 @@ import (
 )
 
 //go:generate go tool -modfile=../../../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate server --spec ../../../../api/swagger.yaml --target ../ --name GitHubReleaseNotification --exclude-main
+
+//go:embed static/index.html
+var indexHTML []byte
+
+//go:embed static/style.css
+var styleCSS []byte
+
+//go:embed static/app.js
+var appJS []byte
 
 func configureFlags(api *operations.GitHubReleaseNotificationAPI) {
 	_ = api
@@ -117,5 +128,35 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics.
 func setupGlobalMiddleware(handler http.Handler, healthChecker func(context.Context) error, logger *slog.Logger) http.Handler {
-	return healthcheckMiddleware(healthChecker, logger)(loggingMiddleware(logger)(handler))
+	return healthcheckMiddleware(healthChecker, logger)(loggingMiddleware(logger)(staticPagesMiddleware(handler)))
+}
+
+// staticPagesMiddleware serves the frontend HTML page for the root path and the
+// /confirm/* and /unsubscribe/* paths, and style.css and app.js.
+// All other requests are forwarded to the next handler.
+func staticPagesMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			path := r.URL.Path
+			switch {
+			case path == "/style.css":
+				w.Header().Set("Content-Type", "text/css; charset=utf-8")
+				_, _ = w.Write(styleCSS)
+
+				return
+			case path == "/app.js":
+				w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+				_, _ = w.Write(appJS)
+
+				return
+			case path == "/" || path == "" || strings.HasPrefix(path, "/confirm/") || strings.HasPrefix(path, "/unsubscribe/"):
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write(indexHTML)
+
+				return
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

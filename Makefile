@@ -33,3 +33,6 @@ test-integration:
 govulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@latest -format json ./... > govulncheck.json
 	./scripts/check-govulncheck.sh govulncheck.json
+
+run:
+	docker compose up --build

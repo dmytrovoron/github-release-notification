@@ -91,15 +91,15 @@ func server() error {
 		},
 	)
 
-	// TODO: this is a dirty workaround to build the confirm URL base.
-	// Ideally, the confirm path ("/confirm") should be derived from the generated
-	// ConfirmSubscriptionURL, but it requires a non-empty token to produce a valid URL.
-	// Instead, we manually replicate the path segment and join it with the swagger base path.
-	confirmURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "confirm")
+	// confirmURLBase points to the frontend confirm page (/confirm/{token}) so that
+	// clicking the link in the confirmation email renders the HTML UI instead of raw JSON.
+	confirmURLBase, err := url.JoinPath(cfg.AppBaseURL, "confirm")
 	if err != nil {
 		return fmt.Errorf("build confirm url base: %w", err)
 	}
-	unsubscribeURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "unsubscribe")
+	// unsubscribeURLBase points to the frontend unsubscribe page (/unsubscribe/{token})
+	// so unsubscribe links render HTML instead of returning an empty API response.
+	unsubscribeURLBase, err := url.JoinPath(cfg.AppBaseURL, "unsubscribe")
 	if err != nil {
 		return fmt.Errorf("build unsubscribe url base: %w", err)
 	}
