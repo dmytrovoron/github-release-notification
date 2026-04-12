@@ -29,6 +29,8 @@ services:
       dockerfile: Dockerfile
     container_name: gh-release-notification-app
     environment:
+      DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
+      MIGRATIONS_PATH: file:///app/migrations
       GITHUB_AUTH_TOKEN: ${GITHUB_AUTH_TOKEN}
       SCANNER_INTERVAL: 5s
       NOTIFIER_INTERVAL: 5s
