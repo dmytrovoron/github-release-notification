@@ -255,6 +255,7 @@ linters:
       - path: _test\.go$
         linters:
           - decorder
+          - dupl
           - gochecknoglobals
           - goconst
           - gosec
