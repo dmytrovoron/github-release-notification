@@ -36,7 +36,7 @@ func (r *NotifierRepository) ListPendingNotifications(ctx context.Context) ([]re
 		_ = rows.Close()
 	}()
 
-	result := make([]repository.PendingNotification, 0)
+	var result []repository.PendingNotification
 	for rows.Next() {
 		var item repository.PendingNotification
 		if scanErr := rows.Scan(

@@ -39,7 +39,7 @@ func newMetricsRegistry() *metricsRegistry {
 	return &metricsRegistry{
 		now:       time.Now,
 		startedAt: time.Now(),
-		requests:  make(map[requestMetricKey]requestMetricValue),
+		requests:  map[requestMetricKey]requestMetricValue{},
 	}
 }
 
@@ -142,7 +142,8 @@ func metricsMiddleware(registry *metricsRegistry) func(http.Handler) http.Handle
 }
 
 func renderRequestLabels(key requestMetricKey) string {
-	return fmt.Sprintf("method=%q,path=%q,status=%q", escapeLabelValue(key.method), escapeLabelValue(key.path), escapeLabelValue(strconv.Itoa(key.status)))
+	return fmt.Sprintf("method=%q,path=%q,status=%q",
+		escapeLabelValue(key.method), escapeLabelValue(key.path), escapeLabelValue(strconv.Itoa(key.status)))
 }
 
 func escapeLabelValue(value string) string {

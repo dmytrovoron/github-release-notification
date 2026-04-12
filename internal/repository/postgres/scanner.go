@@ -31,7 +31,7 @@ func (r *ScannerRepository) ListActive(ctx context.Context) ([]repository.Subscr
 		_ = rows.Close()
 	}()
 
-	result := make([]repository.Subscription, 0)
+	var result []repository.Subscription
 	for rows.Next() {
 		var item repository.Subscription
 		if scanErr := rows.Scan(
