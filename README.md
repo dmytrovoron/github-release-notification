@@ -24,29 +24,25 @@ The service has three runtime components working together:
 docker compose up --build
 ```
 
-2. Open the HTML page to subscribe to repositories and enter a valid email and GitHub repository:
+2. Open the HTML page http://localhost:8080 to subscribe to repositories and enter a valid email and GitHub repository:
 
-- http://localhost:8080
+<img src="docs/1_subscribe.png" alt="Subscribe" width="50%" />
 
-<img src="docs/1_subscribe.png" alt="Subscribe" width="70%" />
+3. Open the Mailpit UI http://localhost:8025 to inspect the confirmation email:
 
-3. Open the Mailpit UI to inspect the confirmation email:
-
-- http://localhost:8025
-
-<img src="docs/2_email_confirm_subscription.png" alt="Email confirmation" width="70%" />
+<img src="docs/2_email_confirm_subscription.png" alt="Email confirmation" width="50%" />
 
 4. Press "Confirm" to view the confirmation HTML page:
 
-<img src="docs/3_subscription_confirmed.png" alt="Subscription confirmed" width="70%" />
+<img src="docs/3_subscription_confirmed.png" alt="Subscription confirmed" width="50%" />
 
 5. Receive the release notification email:
 
-<img src="docs/4_email_new_release.png" alt="Email new release" width="70%" />
+<img src="docs/4_email_new_release.png" alt="Email new release" width="50%" />
 
 6. Press "Unsubscribe these notifications" to stop receiving release emails:
 
-<img src="docs/5_unsubscribe.png" alt="Unsubscribe confirmed" width="70%" />
+<img src="docs/5_unsubscribe.png" alt="Unsubscribe confirmed" width="50%" />
 
 ## Architecture
 
