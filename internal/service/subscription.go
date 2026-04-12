@@ -130,7 +130,7 @@ func (s *SubscriptionService) Subscribe(ctx context.Context, email, ownerRepo st
 	})
 	if err != nil {
 		// Log email failure but don't fail the subscription creation
-		s.log.ErrorContext(ctx, "failed to send confirmation email", "email", email, "repo", ownerRepo, "error", err)
+		s.log.ErrorContext(ctx, "Failed to send confirmation email", "email", email, "repo", ownerRepo, "error", err)
 	}
 
 	return nil
@@ -154,7 +154,7 @@ func (s *SubscriptionService) Confirm(ctx context.Context, token string) error {
 		return err
 	}
 
-	s.log.InfoContext(ctx, "subscription confirmed", "subscriptionID", subscriptionEntity.ID)
+	s.log.InfoContext(ctx, "Subscription confirmed", "subscriptionID", subscriptionEntity.ID)
 
 	return nil
 }
@@ -177,7 +177,7 @@ func (s *SubscriptionService) Unsubscribe(ctx context.Context, token string) err
 		return err
 	}
 
-	s.log.InfoContext(ctx, "subscription unsubscribed", "subscriptionID", subscriptionEntity.ID)
+	s.log.InfoContext(ctx, "Subscription unsubscribed", "subscriptionID", subscriptionEntity.ID)
 
 	return nil
 }

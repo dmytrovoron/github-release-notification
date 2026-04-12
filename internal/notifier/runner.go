@@ -50,7 +50,7 @@ func NewRunner(
 }
 
 func (r *Runner) Start(ctx context.Context) {
-	r.log.InfoContext(ctx, "starting release notifier", "interval", r.interval.String())
+	r.log.InfoContext(ctx, "Starting release notifier", "interval", r.interval.String())
 	r.runNotify(ctx)
 
 	ticker := time.NewTicker(r.interval)
@@ -59,7 +59,7 @@ func (r *Runner) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.InfoContext(ctx, "release notifier stopped")
+			r.log.InfoContext(ctx, "Release notifier stopped")
 
 			return
 		case <-ticker.C:
@@ -80,11 +80,11 @@ func (r *Runner) runNotify(ctx context.Context) {
 	startedAt := time.Now()
 	stats := notifyStats{}
 
-	r.log.InfoContext(ctx, "notifier run started")
+	r.log.InfoContext(ctx, "Notifier run started")
 
 	pending, err := r.repo.ListPendingNotifications(ctx)
 	if err != nil {
-		r.log.ErrorContext(ctx, "list pending notifications", "duration", time.Since(startedAt).String(), "error", err)
+		r.log.ErrorContext(ctx, "List pending notifications", "duration", time.Since(startedAt).String(), "error", err)
 
 		return
 	}
@@ -98,7 +98,7 @@ func (r *Runner) runNotify(ctx context.Context) {
 			stats.urlBuildFailures++
 			r.log.ErrorContext(
 				ctx,
-				"build unsubscribe url",
+				"Build unsubscribe url",
 				"subscription_id", n.SubscriptionID,
 				"repository", n.Repository,
 				"error", err,
@@ -116,7 +116,7 @@ func (r *Runner) runNotify(ctx context.Context) {
 			stats.sendFailures++
 			r.log.ErrorContext(
 				ctx,
-				"send release notification",
+				"Send release notification",
 				"subscription_id", n.SubscriptionID,
 				"repository", n.Repository,
 				"email", n.Email,
@@ -131,7 +131,7 @@ func (r *Runner) runNotify(ctx context.Context) {
 			stats.markFailures++
 			r.log.ErrorContext(
 				ctx,
-				"mark subscription notified",
+				"Mark subscription notified",
 				"subscription_id", n.SubscriptionID,
 				"tag", n.CurrentTag,
 				"error", err,
@@ -143,7 +143,7 @@ func (r *Runner) runNotify(ctx context.Context) {
 		stats.sent++
 		r.log.InfoContext(
 			ctx,
-			"release notification sent",
+			"Release notification sent",
 			"subscription_id", n.SubscriptionID,
 			"repository", n.Repository,
 			"email", n.Email,
@@ -153,7 +153,7 @@ func (r *Runner) runNotify(ctx context.Context) {
 
 	r.log.InfoContext(
 		ctx,
-		"notifier run completed",
+		"Notifier run completed",
 		"duration", time.Since(startedAt),
 		"pending", stats.pending,
 		"sent", stats.sent,

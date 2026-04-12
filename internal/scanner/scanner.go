@@ -56,7 +56,7 @@ func NewRunner(
 }
 
 func (r *Runner) Start(ctx context.Context) {
-	r.log.InfoContext(ctx, "starting release scanner", "interval", r.interval.String())
+	r.log.InfoContext(ctx, "Starting release scanner", "interval", r.interval.String())
 	r.runScan(ctx)
 
 	ticker := time.NewTicker(r.interval)
@@ -65,7 +65,7 @@ func (r *Runner) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			r.log.InfoContext(ctx, "release scanner stopped")
+			r.log.InfoContext(ctx, "Release scanner stopped")
 
 			return
 		case <-ticker.C:
@@ -86,18 +86,18 @@ func (r *Runner) runScan(ctx context.Context) {
 	startedAt := time.Now()
 	stats := scanStats{}
 
-	r.log.InfoContext(ctx, "scanner run started", "interval", r.interval.String())
+	r.log.InfoContext(ctx, "Run started", "interval", r.interval.String())
 
 	subscriptions, err := r.repo.ListActive(ctx)
 	if err != nil {
-		r.log.ErrorContext(ctx, "list active subscriptions for scanner", "duration", time.Since(startedAt).String(), "error", err)
+		r.log.ErrorContext(ctx, "List active subscriptions for scanner", "duration", time.Since(startedAt).String(), "error", err)
 
 		return
 	}
 	stats.activeSubscriptions = len(subscriptions)
 
 	if len(subscriptions) == 0 {
-		r.log.InfoContext(ctx, "scanner run completed", "duration", time.Since(startedAt), "active_subscriptions", 0, "repositories", 0)
+		r.log.InfoContext(ctx, "Scanner run completed", "duration", time.Since(startedAt), "active_subscriptions", 0, "repositories", 0)
 
 		return
 	}
@@ -111,7 +111,7 @@ func (r *Runner) runScan(ctx context.Context) {
 
 	r.log.InfoContext(
 		ctx,
-		"scanner grouped active subscriptions",
+		"Grouped active subscriptions",
 		"active_subscriptions", stats.activeSubscriptions,
 		"repositories", stats.repositories,
 	)
@@ -119,7 +119,7 @@ func (r *Runner) runScan(ctx context.Context) {
 	for repositoryName, repoSubscribers := range byRepository {
 		r.log.InfoContext(
 			ctx,
-			"scanner checking repository",
+			"Checking repository",
 			"repository", repositoryName,
 			"subscriber_count", len(repoSubscribers),
 		)
@@ -127,7 +127,7 @@ func (r *Runner) runScan(ctx context.Context) {
 		owner, repoName, ok := strings.Cut(repositoryName, "/")
 		if !ok {
 			stats.invalidRepositories++
-			r.log.WarnContext(ctx, "skip invalid repository name in active subscription", "repository", repositoryName)
+			r.log.WarnContext(ctx, "Skip invalid repository name in active subscription", "repository", repositoryName)
 
 			continue
 		}
@@ -135,17 +135,17 @@ func (r *Runner) runScan(ctx context.Context) {
 		tag, err := r.github.LatestReleaseTag(ctx, owner, repoName)
 		if err != nil {
 			stats.githubFailures++
-			r.log.ErrorContext(ctx, "fetch latest release tag", "repository", repositoryName, "error", err)
+			r.log.ErrorContext(ctx, "Fetch latest release tag", "repository", repositoryName, "error", err)
 
 			continue
 		}
 
-		r.log.InfoContext(ctx, "scanner fetched latest release tag", "repository", repositoryName, "tag", tag)
+		r.log.InfoContext(ctx, "Fetched latest release tag", "repository", repositoryName, "tag", tag)
 
 		updateResult, err := r.repo.AdvanceRepositoryTag(ctx, repositoryName, tag)
 		if err != nil {
 			stats.advanceFailures++
-			r.log.ErrorContext(ctx, "advance repository tag", "repository", repositoryName, "tag", tag, "error", err)
+			r.log.ErrorContext(ctx, "Advance repository tag", "repository", repositoryName, "tag", tag, "error", err)
 
 			continue
 		}
@@ -155,19 +155,19 @@ func (r *Runner) runScan(ctx context.Context) {
 			stats.changedRepositories++
 			r.log.InfoContext(
 				ctx,
-				"scanner detected new release",
+				"Detected new release",
 				"repository", repositoryName,
 				"tag", tag,
 				"subscriber_count", len(repoSubscribers),
 			)
 		case repository.RepositoryTagInitialized:
 			stats.initializedRepositories++
-			r.log.InfoContext(ctx, "scanner initialized repository state", "repository", repositoryName, "tag", tag)
+			r.log.InfoContext(ctx, "Initialized repository state", "repository", repositoryName, "tag", tag)
 		case repository.RepositoryTagUnchanged:
 			stats.unchangedRepositories++
-			r.log.InfoContext(ctx, "scanner repository tag unchanged", "repository", repositoryName, "tag", tag)
+			r.log.InfoContext(ctx, "Repository tag unchanged", "repository", repositoryName, "tag", tag)
 		default:
-			r.log.InfoContext(ctx, "scanner repository tag result", "repository", repositoryName, "tag", tag, "result", updateResult)
+			r.log.InfoContext(ctx, "Repository tag result", "repository", repositoryName, "tag", tag, "result", updateResult)
 		}
 
 		if updateResult != repository.RepositoryTagChanged {
@@ -177,7 +177,7 @@ func (r *Runner) runScan(ctx context.Context) {
 
 	r.log.InfoContext(
 		ctx,
-		"scanner run completed",
+		"Run completed",
 		"duration", time.Since(startedAt),
 		"active_subscriptions", stats.activeSubscriptions,
 		"repositories", stats.repositories,

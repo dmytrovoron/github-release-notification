@@ -42,10 +42,6 @@ func server() error {
 	baseLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(baseLogger)
 
-	httpLogger := baseLogger.With("appType", "httpServer")
-	scannerLogger := baseLogger.With("appType", "scanner")
-	notifierLogger := baseLogger.With("appType", "notifier")
-
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -81,8 +77,9 @@ func server() error {
 	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout).WithBaseURL(cfg.GitHubAPIBaseURL)
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
+
 	notif := notifier.NewNotifier(
-		notifierLogger,
+		baseLogger.With("appType", "notifier"),
 		notifier.NotifierConfig{
 			SMTPHost:     cfg.SMTPHost,
 			SMTPPort:     cfg.SMTPPort,
@@ -104,8 +101,10 @@ func server() error {
 	if err != nil {
 		return fmt.Errorf("build unsubscribe url base: %w", err)
 	}
-	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, httpLogger, confirmURLBase)
-	restapi.NewSubscriptionHandler(subscriptionService, httpLogger).Register(api)
+
+	apiLogger := baseLogger.With("appType", "api")
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, apiLogger, confirmURLBase)
+	restapi.NewSubscriptionHandler(subscriptionService, apiLogger).Register(api)
 
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
@@ -113,12 +112,14 @@ func server() error {
 	var wg sync.WaitGroup
 
 	scannerRepo := postgres.NewScannerRepository(db)
+	scannerLogger := baseLogger.With("appType", "scanner")
 	scannerRunner := scanner.NewRunner(scannerLogger, scannerRepo, githubClient, cfg.ScannerInterval)
 	wg.Go(func() {
 		scannerRunner.Start(appCtx)
 	})
 
 	notifierRepo := postgres.NewNotifierRepository(db)
+	notifierLogger := baseLogger.With("appType", "notifier")
 	notifierRunner := notifier.NewRunner(notifierLogger, notifierRepo, notif, cfg.NotifierInterval, unsubscribeURLBase)
 	wg.Go(func() {
 		notifierRunner.Start(appCtx)
@@ -131,7 +132,7 @@ func server() error {
 		defer pingCancel()
 
 		return db.PingContext(pingCtx)
-	}, httpLogger))
+	}, apiLogger))
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(quit)
@@ -163,7 +164,7 @@ func server() error {
 	}
 
 	if _, err := parser.Parse(); err != nil {
-		return err
+		return fmt.Errorf("parse: %w", err)
 	}
 
 	if err := server.Serve(); err != nil {

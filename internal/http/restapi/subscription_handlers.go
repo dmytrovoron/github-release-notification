@@ -42,7 +42,7 @@ func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) mid
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Subscribe(ctx, params.Email, params.Repo)
 	if err != nil {
-		h.log.ErrorContext(ctx, "subscribe failed", "email", params.Email, "repo", params.Repo, "error", err)
+		h.log.ErrorContext(ctx, "Subscribe failed", "email", params.Email, "repo", params.Repo, "error", err)
 	}
 
 	switch {
@@ -63,7 +63,7 @@ func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSub
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Confirm(ctx, params.Token)
 	if err != nil {
-		h.log.ErrorContext(ctx, "confirm subscription failed", "error", err)
+		h.log.ErrorContext(ctx, "Confirm subscription failed", "error", err)
 	}
 
 	switch {
@@ -82,7 +82,7 @@ func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams)
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Unsubscribe(ctx, params.Token)
 	if err != nil {
-		h.log.ErrorContext(ctx, "unsubscribe failed", "error", err)
+		h.log.ErrorContext(ctx, "Unsubscribe failed", "error", err)
 	}
 
 	switch {
@@ -101,7 +101,7 @@ func (h *SubscriptionHandler) getSubscriptions(params subscription.GetSubscripti
 	ctx := params.HTTPRequest.Context()
 	items, err := h.svc.ListByEmail(ctx, params.Email)
 	if err != nil {
-		h.log.ErrorContext(ctx, "get subscriptions failed", "email", params.Email, "error", err)
+		h.log.ErrorContext(ctx, "Get subscriptions failed", "email", params.Email, "error", err)
 	}
 
 	switch {

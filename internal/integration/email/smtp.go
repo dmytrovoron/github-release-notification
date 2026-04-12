@@ -120,7 +120,7 @@ func (s *SMTPSender) SendConfirmation(ctx context.Context, message ConfirmationM
 		return fmt.Errorf("send confirmation email via smtp: %w", err)
 	}
 
-	s.log.InfoContext(ctx, "subscription confirmation email sent",
+	s.log.InfoContext(ctx, "Subscription confirmation email sent",
 		"email", message.Email,
 		"repository", message.Repository,
 		"smtp_host", s.cfg.Host,
@@ -166,7 +166,7 @@ func (s *SMTPSender) SendRelease(ctx context.Context, message ReleaseMessage) er
 		return fmt.Errorf("send release email via smtp: %w", err)
 	}
 
-	s.log.InfoContext(ctx, "release notification email sent",
+	s.log.InfoContext(ctx, "Release notification email sent",
 		"email", message.Email,
 		"repository", message.Repository,
 		"tag", message.Tag,
