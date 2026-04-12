@@ -9,10 +9,10 @@ import (
 	"github.com/go-openapi/runtime/middleware"
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api/models"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations/subscription"
-	"github.com/dmytrovoron/github-release-notification/internal/service/api"
 )
 
 type SubscriptionService interface {
@@ -31,11 +31,11 @@ func NewSubscriptionHandler(svc SubscriptionService, logger *slog.Logger) *Subsc
 	return &SubscriptionHandler{svc: svc, log: logger}
 }
 
-func (h *SubscriptionHandler) Register(api *operations.GitHubReleaseNotificationAPI) {
-	api.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(h.subscribe)
-	api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(h.confirmSubscription)
-	api.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(h.unsubscribe)
-	api.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(h.getSubscriptions)
+func (h *SubscriptionHandler) Register(notifAPI *operations.GitHubReleaseNotificationAPI) {
+	notifAPI.SubscriptionSubscribeHandler = subscription.SubscribeHandlerFunc(h.subscribe)
+	notifAPI.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(h.confirmSubscription)
+	notifAPI.SubscriptionUnsubscribeHandler = subscription.UnsubscribeHandlerFunc(h.unsubscribe)
+	notifAPI.SubscriptionGetSubscriptionsHandler = subscription.GetSubscriptionsHandlerFunc(h.getSubscriptions)
 }
 
 func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) middleware.Responder {
