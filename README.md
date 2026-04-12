@@ -168,6 +168,26 @@ make test-e2e
 make govulncheck
 ```
 
+## E2E Tests
+
+The e2e suite reads its environment from the repository root `.env` file.
+
+1. Create the file from the example:
+
+```bash
+cp .env.example .env
+```
+
+2. Set `GITHUB_AUTH_TOKEN` in `.env` to a token that can read `dmytrovoron/github-release-notification-e2e-test`.
+
+3. Adjust the `E2E_*` variables in `.env` only if you need to override the default container wiring used by the test harness.
+
+4. Run the suite:
+
+```bash
+make test-e2e
+```
+
 ## Notes
 
 - Confirmation email delivery errors are logged and do not fail subscription creation.

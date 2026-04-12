@@ -18,6 +18,7 @@ import (
 	"time"
 
 	gh "github.com/google/go-github/v84/github"
+	"github.com/subosito/gotenv"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -31,32 +32,28 @@ import (
 var e e2e
 
 func TestMain(m *testing.M) {
-	os.Exit(run(m))
+	run(m)
 }
 
 func run(m *testing.M) int {
-	setupDockerEnv()
-
-	githubAuthToken := strings.TrimSpace(os.Getenv("GITHUB_AUTH_TOKEN"))
-	if githubAuthToken == "" {
-		// https://github.com/settings/personal-access-tokens/new
-		log.Println("skip: GITHUB_AUTH_TOKEN not set; provide a token with access to dmytrovoron/github-release-notification-e2e-test")
-
-		return 0
+	repoRoot := mustFindRepoRoot()
+	envPath := filepath.Join(repoRoot, ".env")
+	env, err := gotenv.Read(envPath)
+	if err != nil {
+		log.Fatalf("Read %s: %v", envPath, err)
 	}
 
-	if err := checkDockerProvider(); err != nil {
-		log.Printf("skip: Docker provider not healthy: %v", err)
+	setupDockerEnv()
 
-		return 0
+	if err := checkDockerProvider(); err != nil {
+		log.Fatalf("Docker provider not healthy: %v", err)
 	}
 
 	ctx := context.Background()
-	repoRoot := mustFindRepoRoot()
 
 	nw, err := network.New(ctx, network.WithAttachable())
 	if err != nil {
-		log.Fatalf("create docker network: %v", err)
+		log.Fatalf("Create docker network: %v", err)
 	}
 
 	defer func() { _ = nw.Remove(ctx) }()
@@ -67,49 +64,49 @@ func run(m *testing.M) int {
 	smtpC := mustStartSMTPContainer(ctx, nw)
 	defer func() { _ = testcontainers.TerminateContainer(smtpC) }()
 
-	appC := mustStartAppContainer(ctx, repoRoot, nw, githubAuthToken)
+	appC := mustStartAppContainer(ctx, repoRoot, nw, env)
 	defer func() { _ = appC.Terminate(ctx) }()
 
 	dbHost, err := dbC.Host(ctx)
 	if err != nil {
-		log.Fatalf("resolve db host: %v", err)
+		log.Fatalf("Resolve db host: %v", err)
 	}
 
 	dbPort, err := dbC.MappedPort(ctx, "5432/tcp")
 	if err != nil {
-		log.Fatalf("resolve db port: %v", err)
+		log.Fatalf("Resolve db port: %v", err)
 	}
 
 	appHost, err := appC.Host(ctx)
 	if err != nil {
-		log.Fatalf("resolve app host: %v", err)
+		log.Fatalf("Resolve app host: %v", err)
 	}
 
 	appPort, err := appC.MappedPort(ctx, "8080/tcp")
 	if err != nil {
-		log.Fatalf("resolve app port: %v", err)
+		log.Fatalf("Resolve app port: %v", err)
 	}
 
 	smtpHost, err := smtpC.Host(ctx)
 	if err != nil {
-		log.Fatalf("resolve smtp host: %v", err)
+		log.Fatalf("Resolve smtp host: %v", err)
 	}
 
 	smtpHTTPPort, err := smtpC.MappedPort(ctx, "8025/tcp")
 	if err != nil {
-		log.Fatalf("resolve smtp http port: %v", err)
+		log.Fatalf("Resolve smtp http port: %v", err)
 	}
 
 	databaseURL := fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port()))
 
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
-		log.Fatalf("open db: %v", err)
+		log.Fatalf("Open db: %v", err)
 	}
 
 	defer func() { _ = db.Close() }()
 
-	ghClient := gh.NewClient(&http.Client{Timeout: 20 * time.Second}).WithAuthToken(githubAuthToken)
+	ghClient := gh.NewClient(&http.Client{Timeout: 20 * time.Second}).WithAuthToken(env["GITHUB_AUTH_TOKEN"])
 
 	e = e2e{
 		client:         mustNewAPIClient(fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port()))),
@@ -231,25 +228,21 @@ func mustStartAppContainer(
 	ctx context.Context,
 	repoRoot string,
 	nw *testcontainers.DockerNetwork,
-	githubAuthToken string,
+	env map[string]string,
 ) testcontainers.Container {
+	env["MIGRATIONS_PATH"] = "file:///app/migrations"
+	env["DATABASE_URL"] = "postgres://app:app@db:5432/app?sslmode=disable"
+	env["SCANNER_INTERVAL"] = "2s"
+	env["NOTIFIER_INTERVAL"] = "2s"
+	env["SMTP_HOST"] = "smtp"
+
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			FromDockerfile: testcontainers.FromDockerfile{
 				Context:    repoRoot,
 				Dockerfile: "Dockerfile",
 			},
-			Env: map[string]string{
-				"DATABASE_URL":          "postgres://app:app@db:5432/app?sslmode=disable",
-				"MIGRATIONS_PATH":       "file:///app/migrations",
-				"DATABASE_PING_TIMEOUT": "10s",
-				"GITHUB_API_TIMEOUT":    "5s",
-				"GITHUB_AUTH_TOKEN":     githubAuthToken,
-				"SMTP_HOST":             "smtp",
-				"SMTP_PORT":             "1025",
-				"SCANNER_INTERVAL":      "2s",
-				"NOTIFIER_INTERVAL":     "2s",
-			},
+			Env:          env,
 			ExposedPorts: []string{"8080/tcp"},
 			WaitingFor: wait.ForHTTP("/healthz").
 				WithPort("8080/tcp").

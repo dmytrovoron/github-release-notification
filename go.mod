@@ -17,6 +17,7 @@ require (
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/stretchr/testify v1.11.1
+	github.com/subosito/gotenv v1.6.0
 	github.com/testcontainers/testcontainers-go v0.42.0
 	golang.org/x/net v0.53.0
 )

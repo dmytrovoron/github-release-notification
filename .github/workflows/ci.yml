@@ -111,6 +111,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Prepare .env for E2E tests
+        run: |
+          cp .env.example .env
+          printf '\nGITHUB_AUTH_TOKEN=%s\n' "$GITHUB_AUTH_TOKEN" >> .env
+
       - name: Run E2E tests
         run: go test -tags e2e -v ./tests/e2e/...
 

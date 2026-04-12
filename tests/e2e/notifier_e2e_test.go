@@ -19,7 +19,7 @@ func TestNotifierE2E(t *testing.T) {
 
 	t.Run("pending subscription receives release notification email", func(t *testing.T) {
 		email := gofakeit.Email()
-		repositoryName := "golang/go"
+		repositoryName := fakeRepository()
 		tag := "v1.2.3"
 		unsubscribeToken := gofakeit.UUID()
 
@@ -121,4 +121,8 @@ func (e *e2e) findMailpitReleaseEmail(t *testing.T, recipient, repositoryName, r
 	}
 
 	return false
+}
+
+func fakeRepository() string {
+	return strings.ToLower(gofakeit.SafeColor() + "/" + gofakeit.Color())
 }

@@ -20,7 +20,7 @@ import (
 
 //go:generate go tool -modfile=../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate client --spec ../../api/swagger.yaml --target ../http
 
-func TestSubscribeEndpointE2E(t *testing.T) {
+func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Subscription successful", func(t *testing.T) {
@@ -78,7 +78,7 @@ func TestSubscribeEndpointE2E(t *testing.T) {
 	})
 }
 
-func TestConfirmEndpointE2E(t *testing.T) {
+func TestAPI_ConfirmEndpointE2E(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Confirm subscription successful", func(t *testing.T) {
@@ -126,7 +126,7 @@ func TestConfirmEndpointE2E(t *testing.T) {
 	})
 }
 
-func TestGetSubscriptionsEndpointE2E(t *testing.T) {
+func TestAPI_GetSubscriptionsEndpointE2E(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Successful operation - list of subscriptions returned", func(t *testing.T) {
@@ -162,7 +162,7 @@ func TestGetSubscriptionsEndpointE2E(t *testing.T) {
 	})
 }
 
-func TestUnsubscribeEndpointE2E(t *testing.T) {
+func TestAPI_UnsubscribeEndpointE2E(t *testing.T) {
 	t.Parallel()
 
 	t.Run("Unsubscribed successful", func(t *testing.T) {

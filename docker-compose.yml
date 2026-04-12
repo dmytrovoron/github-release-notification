@@ -16,7 +16,7 @@ services:
       timeout: 3s
       retries: 10
 
-  mailpit:
+  smtp:
     image: axllent/mailpit:latest
     container_name: gh-release-notification-email
     ports:
@@ -29,16 +29,13 @@ services:
       dockerfile: Dockerfile
     container_name: gh-release-notification-app
     environment:
-      DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
-      MIGRATIONS_PATH: file:///app/migrations
-      DATABASE_PING_TIMEOUT: 5s
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
-      SMTP_FROM: no-reply@github-release-notification.local
+      GITHUB_AUTH_TOKEN: ${GITHUB_AUTH_TOKEN}
+      SCANNER_INTERVAL: 5s
+      NOTIFIER_INTERVAL: 5s
     depends_on:
       db:
         condition: service_healthy
-      mailpit:
+      smtp:
         condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/healthz > /dev/null || exit 1"]
