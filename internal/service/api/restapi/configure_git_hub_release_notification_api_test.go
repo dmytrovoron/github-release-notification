@@ -1,4 +1,4 @@
-package restapi
+package restapi_test
 
 import (
 	"net/http"
@@ -10,15 +10,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
 )
 
 func TestDocsEndpointServesSwaggerUI(t *testing.T) {
-	spec, err := loads.Embedded(SwaggerJSON, FlatSwaggerJSON)
+	spec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	require.NoError(t, err, "load embedded spec")
 
 	api := operations.NewGitHubReleaseNotificationAPI(spec)
-	handler := configureAPI(api)
+	handler := restapi.NewHandler(api, nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/docs", http.NoBody)
 	rec := httptest.NewRecorder()

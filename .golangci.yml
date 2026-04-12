@@ -25,7 +25,6 @@ linters:
     - nonamedreturns
     - paralleltest
     - tagalign
-    - testpackage
     - tparallel
     - varnamelen
     - wastedassign
