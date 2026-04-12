@@ -24,10 +24,11 @@ type SubscriptionService interface {
 
 type SubscriptionHandler struct {
 	svc SubscriptionService
+	log *slog.Logger
 }
 
-func NewSubscriptionHandler(svc SubscriptionService) *SubscriptionHandler {
-	return &SubscriptionHandler{svc: svc}
+func NewSubscriptionHandler(svc SubscriptionService, logger *slog.Logger) *SubscriptionHandler {
+	return &SubscriptionHandler{svc: svc, log: logger}
 }
 
 func (h *SubscriptionHandler) Register(api *operations.GitHubReleaseNotificationAPI) {
@@ -41,7 +42,7 @@ func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) mid
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Subscribe(ctx, params.Email, params.Repo)
 	if err != nil {
-		slog.Default().ErrorContext(ctx, "subscribe failed", "email", params.Email, "repo", params.Repo, "error", err)
+		h.log.ErrorContext(ctx, "subscribe failed", "email", params.Email, "repo", params.Repo, "error", err)
 	}
 
 	switch {
@@ -62,7 +63,7 @@ func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSub
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Confirm(ctx, params.Token)
 	if err != nil {
-		slog.Default().ErrorContext(ctx, "confirm subscription failed", "error", err)
+		h.log.ErrorContext(ctx, "confirm subscription failed", "error", err)
 	}
 
 	switch {
@@ -81,7 +82,7 @@ func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams)
 	ctx := params.HTTPRequest.Context()
 	err := h.svc.Unsubscribe(ctx, params.Token)
 	if err != nil {
-		slog.Default().ErrorContext(ctx, "unsubscribe failed", "error", err)
+		h.log.ErrorContext(ctx, "unsubscribe failed", "error", err)
 	}
 
 	switch {
@@ -100,7 +101,7 @@ func (h *SubscriptionHandler) getSubscriptions(params subscription.GetSubscripti
 	ctx := params.HTTPRequest.Context()
 	items, err := h.svc.ListByEmail(ctx, params.Email)
 	if err != nil {
-		slog.Default().ErrorContext(ctx, "get subscriptions failed", "email", params.Email, "error", err)
+		h.log.ErrorContext(ctx, "get subscriptions failed", "email", params.Email, "error", err)
 	}
 
 	switch {

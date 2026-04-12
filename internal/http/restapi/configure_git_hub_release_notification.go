@@ -5,6 +5,7 @@ package restapi
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -45,6 +46,9 @@ func configureAPIWithHealthChecker(
 	//
 	// Example:
 	// api.Logger = log.Printf
+	api.Logger = func(msg string, args ...any) {
+		logger.Info(fmt.Sprintf(msg, args...))
+	}
 
 	api.UseSwaggerUI()
 	// To continue using redoc as your UI, uncomment the following line
@@ -127,5 +131,5 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics.
 func setupGlobalMiddleware(handler http.Handler, healthChecker func(context.Context) error, logger *slog.Logger) http.Handler {
-	return healthcheckMiddleware(healthChecker)(loggingMiddleware(logger)(handler))
+	return healthcheckMiddleware(healthChecker, logger)(loggingMiddleware(logger)(handler))
 }

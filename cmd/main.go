@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log"
 	"log/slog"
 	"net/url"
 	"os"
@@ -30,18 +29,25 @@ func main() {
 }
 
 func server() {
+	baseLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(baseLogger)
+
+	httpLogger := baseLogger.With("appType", "httpServer")
+	scannerLogger := baseLogger.With("appType", "scanner")
+	notifierLogger := baseLogger.With("appType", "notifier")
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "load config", err)
 	}
 
 	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "open database connection", err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			log.Printf("close db connection: %v", closeErr)
+			baseLogger.Error("close db connection", "error", closeErr)
 		}
 	}()
 
@@ -49,26 +55,24 @@ func server() {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "ping database", err)
 	}
 
 	if err := migrations.Run(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "run migrations", err)
 	}
 
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "load swagger spec", err)
 	}
 
 	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
 	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout).WithBaseURL(cfg.GitHubAPIBaseURL)
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
 	notif := notifier.NewNotifier(
-		logger,
+		notifierLogger,
 		notifier.NotifierConfig{
 			SMTPHost:     cfg.SMTPHost,
 			SMTPPort:     cfg.SMTPPort,
@@ -84,17 +88,17 @@ func server() {
 	// Instead, we manually replicate the path segment and join it with the swagger base path.
 	confirmURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "confirm")
 	if err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "build confirm url base", err)
 	}
 	unsubscribeURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "unsubscribe")
 	if err != nil {
-		log.Fatalln(err)
+		exitWithError(baseLogger, "build unsubscribe url base", err)
 	}
-	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, logger, confirmURLBase)
-	restapi.NewSubscriptionHandler(subscriptionService).Register(api)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, httpLogger, confirmURLBase)
+	restapi.NewSubscriptionHandler(subscriptionService, httpLogger).Register(api)
 
 	scannerRepo := postgres.NewScannerRepository(db)
-	scannerRunner := scanner.NewRunner(logger, scannerRepo, githubClient, notif, cfg.ScannerInterval, unsubscribeURLBase)
+	scannerRunner := scanner.NewRunner(scannerLogger, scannerRepo, githubClient, notif, cfg.ScannerInterval, unsubscribeURLBase)
 	scannerCtx, scannerCancel := context.WithCancel(context.Background())
 	defer scannerCancel()
 	go scannerRunner.Start(scannerCtx)
@@ -106,7 +110,7 @@ func server() {
 		defer pingCancel()
 
 		return db.PingContext(pingCtx)
-	}, logger))
+	}, httpLogger))
 	server.ConfigureFlags() // inject API-specific custom flags. Must be called before args parsing
 
 	parser := flags.NewParser(server, flags.Default)
@@ -117,7 +121,7 @@ func server() {
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
-			log.Fatalln(err)
+			exitWithError(baseLogger, "register command line options", err)
 		}
 	}
 
@@ -136,6 +140,11 @@ func server() {
 		scannerCancel()
 		_ = server.Shutdown()
 
-		log.Fatalln(err)
+		exitWithError(httpLogger, "serve http server", err)
 	}
+}
+
+func exitWithError(logger *slog.Logger, message string, err error) {
+	logger.Error(message, "error", err)
+	os.Exit(1)
 }

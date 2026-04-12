@@ -20,22 +20,27 @@ import (
 
 const scannerE2ERepository = "dmytrovoron/github-release-notification-e2e-test"
 
-func TestScannerE2E_ReleaseTriggersNotificationEmail(t *testing.T) {
+func TestScannerE2E(t *testing.T) {
 	e := setupScanner(t)
 
-	email := gofakeit.Email()
-	err := e.subscribe(t, email, scannerE2ERepository)
-	require.NoError(t, err, "subscribe should succeed")
+	t.Run("repository tag changed triggers notification email", func(t *testing.T) {
+		email := gofakeit.Email()
 
-	e.activateSubscriptionByEmail(t, email)
-	baselineTag := e.waitForRepositoryStateTag(t, scannerE2ERepository, 45*time.Second)
-	require.NotEmpty(t, baselineTag, "scanner should initialize repository state before release is created")
+		releaseTagInitial := fmt.Sprintf("e2e-scanner-%d", time.Now().UnixNano())
+		e.createGitHubRelease(t, scannerE2ERepository, releaseTagInitial)
 
-	releaseTag := fmt.Sprintf("e2e-scanner-%d", time.Now().UnixNano())
-	releaseID := e.createGitHubRelease(t, scannerE2ERepository, releaseTag)
-	t.Cleanup(func() { e.cleanupDeleteGitHubRelease(t, scannerE2ERepository, releaseID, releaseTag) })
+		err := e.subscribe(t, email, scannerE2ERepository)
+		require.NoError(t, err, "subscribe should succeed")
 
-	e.waitForMailpitReleaseEmail(t, email, scannerE2ERepository, releaseTag, 90*time.Second)
+		e.activateSubscriptionByEmail(t, email)
+		baselineTag := e.waitForRepositoryStateTag(t, scannerE2ERepository, 30*time.Second)
+		require.NotEmpty(t, baselineTag, "scanner should initialize repository state before release is created")
+
+		releaseTag := fmt.Sprintf("e2e-scanner-%d", time.Now().UnixNano())
+		e.createGitHubRelease(t, scannerE2ERepository, releaseTag)
+
+		e.waitForMailpitReleaseEmail(t, email, scannerE2ERepository, releaseTag, 30*time.Second)
+	})
 }
 
 func (e *e2eScanner) requireRepositoryAccess(t *testing.T, repositoryName string) {
@@ -67,7 +72,7 @@ func (e *e2eScanner) requireRepositoryAccess(t *testing.T, repositoryName string
 	t.Fatalf("verify repository access for %s: %v", repositoryName, err)
 }
 
-func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag string) int64 {
+func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag string) {
 	t.Helper()
 
 	owner, repo, ok := strings.Cut(repositoryName, "/")
@@ -81,7 +86,7 @@ func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag strin
 	require.NoError(t, err, "create github release")
 	require.NotZero(t, created.GetID())
 
-	return created.GetID()
+	t.Cleanup(func() { e.cleanupDeleteGitHubRelease(t, scannerE2ERepository, created.GetID(), tag) })
 }
 
 func (e *e2eScanner) cleanupDeleteGitHubRelease(t *testing.T, repositoryName string, releaseID int64, tag string) {

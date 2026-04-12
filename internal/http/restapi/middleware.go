@@ -50,7 +50,7 @@ func loggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-func healthcheckMiddleware(healthChecker func(context.Context) error) func(http.Handler) http.Handler {
+func healthcheckMiddleware(healthChecker func(context.Context) error, logger *slog.Logger) func(http.Handler) http.Handler {
 	checker := healthChecker
 	if checker == nil {
 		checker = func(context.Context) error { return nil }
@@ -67,7 +67,7 @@ func healthcheckMiddleware(healthChecker func(context.Context) error) func(http.
 				if err := checker(ctx); err != nil {
 					statusCode = http.StatusServiceUnavailable
 					status = "degraded"
-					slog.Default().ErrorContext(ctx, "health check failed", "error", err)
+					logger.ErrorContext(ctx, "health check failed", "error", err)
 				}
 
 				writer.Header().Set("Content-Type", "application/json")
