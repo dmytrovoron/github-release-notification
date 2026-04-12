@@ -16,10 +16,7 @@ import (
 func TestClient_RepositoryExists(t *testing.T) {
 	t.Parallel()
 
-	authToken := os.Getenv("GITHUB_AUTH_TOKEN")
-	if authToken == "" {
-		t.Skip("Set GITHUB_AUTH_TOKEN environment variable to run this test")
-	}
+	authToken := skipIfNoAuthToken(t)
 
 	client := github.NewClient(authToken, 10*time.Second)
 
@@ -57,10 +54,7 @@ func TestClient_RepositoryExists(t *testing.T) {
 func TestClient_LatestReleaseTag(t *testing.T) {
 	t.Parallel()
 
-	authToken := os.Getenv("GITHUB_AUTH_TOKEN")
-	if authToken == "" {
-		t.Skip("Set GITHUB_AUTH_TOKEN environment variable to run this test")
-	}
+	authToken := skipIfNoAuthToken(t)
 
 	client := github.NewClient(authToken, 10*time.Second)
 
@@ -99,4 +93,15 @@ func TestClient_LatestReleaseTag(t *testing.T) {
 			assert.NotEmptyf(t, tag, "LatestReleaseTag(%q, %q) = %q, want non-empty", tc.owner, tc.repo, tag)
 		})
 	}
+}
+
+func skipIfNoAuthToken(t *testing.T) string {
+	t.Helper()
+
+	authToken := os.Getenv("GITHUB_AUTH_TOKEN")
+	if authToken == "" {
+		t.Skip("Set GITHUB_AUTH_TOKEN environment variable to run this test")
+	}
+
+	return authToken
 }
