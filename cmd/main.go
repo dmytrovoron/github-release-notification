@@ -4,9 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-openapi/loads"
@@ -25,10 +29,16 @@ import (
 )
 
 func main() {
-	server()
+	if err := server(); err != nil {
+		if fe, ok := errors.AsType[*flags.Error](err); ok && fe.Type == flags.ErrHelp {
+			os.Exit(0)
+		}
+		slog.Error("server failed", "error", err)
+		os.Exit(1)
+	}
 }
 
-func server() {
+func server() error {
 	baseLogger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(baseLogger)
 
@@ -38,12 +48,12 @@ func server() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		exitWithError(baseLogger, "load config", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	db, err := sql.Open("pgx", cfg.DatabaseURL)
 	if err != nil {
-		exitWithError(baseLogger, "open database connection", err)
+		return fmt.Errorf("open database connection: %w", err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
@@ -55,16 +65,16 @@ func server() {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		exitWithError(baseLogger, "ping database", err)
+		return fmt.Errorf("ping database: %w", err)
 	}
 
 	if err := migrations.Run(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
-		exitWithError(baseLogger, "run migrations", err)
+		return fmt.Errorf("run migrations: %w", err)
 	}
 
 	swaggerSpec, err := loads.Embedded(restapi.SwaggerJSON, restapi.FlatSwaggerJSON)
 	if err != nil {
-		exitWithError(baseLogger, "load swagger spec", err)
+		return fmt.Errorf("load swagger spec: %w", err)
 	}
 
 	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
@@ -88,26 +98,31 @@ func server() {
 	// Instead, we manually replicate the path segment and join it with the swagger base path.
 	confirmURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "confirm")
 	if err != nil {
-		exitWithError(baseLogger, "build confirm url base", err)
+		return fmt.Errorf("build confirm url base: %w", err)
 	}
 	unsubscribeURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "unsubscribe")
 	if err != nil {
-		exitWithError(baseLogger, "build unsubscribe url base", err)
+		return fmt.Errorf("build unsubscribe url base: %w", err)
 	}
 	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, httpLogger, confirmURLBase)
 	restapi.NewSubscriptionHandler(subscriptionService, httpLogger).Register(api)
 
+	appCtx, appCancel := context.WithCancel(context.Background())
+	defer appCancel()
+
+	var wg sync.WaitGroup
+
 	scannerRepo := postgres.NewScannerRepository(db)
 	scannerRunner := scanner.NewRunner(scannerLogger, scannerRepo, githubClient, cfg.ScannerInterval)
-	scannerCtx, scannerCancel := context.WithCancel(context.Background())
-	defer scannerCancel()
-	go scannerRunner.Start(scannerCtx)
+	wg.Go(func() {
+		scannerRunner.Start(appCtx)
+	})
 
 	notifierRepo := postgres.NewNotifierRepository(db)
 	notifierRunner := notifier.NewRunner(notifierLogger, notifierRepo, notif, cfg.NotifierInterval, unsubscribeURLBase)
-	notifierCtx, notifierCancel := context.WithCancel(context.Background())
-	defer notifierCancel()
-	go notifierRunner.Start(notifierCtx)
+	wg.Go(func() {
+		notifierRunner.Start(appCtx)
+	})
 
 	server := restapi.NewServer(api)
 	server.EnabledListeners = []string{cfg.Scheme}
@@ -117,6 +132,22 @@ func server() {
 
 		return db.PingContext(pingCtx)
 	}, httpLogger))
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	go func() {
+		select {
+		case sig := <-quit:
+			baseLogger.Info("received signal, shutting down", "signal", sig)
+			appCancel()
+			if shutdownErr := server.Shutdown(); shutdownErr != nil {
+				baseLogger.Error("http server shutdown", "error", shutdownErr)
+			}
+		case <-appCtx.Done():
+		}
+	}()
+
 	server.ConfigureFlags() // inject API-specific custom flags. Must be called before args parsing
 
 	parser := flags.NewParser(server, flags.Default)
@@ -127,30 +158,23 @@ func server() {
 	for _, optsGroup := range api.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
-			exitWithError(baseLogger, "register command line options", err)
+			return fmt.Errorf("register command line options: %w", err)
 		}
 	}
 
 	if _, err := parser.Parse(); err != nil {
-		code := 1
-		fe := new(flags.Error)
-		if errors.As(err, &fe) {
-			if fe.Type == flags.ErrHelp {
-				code = 0
-			}
-		}
-		os.Exit(code)
+		return err
 	}
 
 	if err := server.Serve(); err != nil {
-		scannerCancel()
+		appCancel()
 		_ = server.Shutdown()
+		wg.Wait()
 
-		exitWithError(httpLogger, "serve http server", err)
+		return fmt.Errorf("serve http server: %w", err)
 	}
-}
 
-func exitWithError(logger *slog.Logger, message string, err error) {
-	logger.Error(message, "error", err)
-	os.Exit(1)
+	wg.Wait()
+
+	return nil
 }

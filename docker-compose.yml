@@ -18,7 +18,7 @@ services:
 
   mailpit:
     image: axllent/mailpit:latest
-    container_name: gh-release-notification-mailpit
+    container_name: gh-release-notification-email
     ports:
       - "1025:1025"
       - "8025:8025"
