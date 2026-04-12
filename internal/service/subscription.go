@@ -197,9 +197,10 @@ func (s *SubscriptionService) ListByEmail(ctx context.Context, email string) ([]
 	for i := range subscriptions {
 		item := subscriptions[i]
 		result = append(result, app.Subscription{
-			Email:      item.Email,
-			Repository: item.Repository,
-			Confirmed:  item.Status == app.SubscriptionStatusActive,
+			Email:       item.Email,
+			Repository:  item.Repository,
+			Confirmed:   item.Status == app.SubscriptionStatusActive,
+			LastSeenTag: item.LastSeenTag,
 		})
 	}
 

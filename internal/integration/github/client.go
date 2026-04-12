@@ -53,3 +53,22 @@ func (c *Client) RepositoryExists(ctx context.Context, owner, repo string) (bool
 
 	return false, fmt.Errorf("unexpected github error: %w", err)
 }
+
+func (c *Client) LatestReleaseTag(ctx context.Context, owner, repo string) (string, error) {
+	release, _, err := c.gh.Repositories.GetLatestRelease(ctx, owner, repo)
+	if err == nil {
+		return release.GetTagName(), nil
+	}
+
+	errResp, ok := errors.AsType[*github.ErrorResponse](err)
+	if !ok {
+		return "", fmt.Errorf("unexpected github error type: %w", err)
+	}
+
+	if errResp.Response.StatusCode == http.StatusNotFound {
+		// GitHub returns 404 when repository has no releases yet.
+		return "", nil
+	}
+
+	return "", fmt.Errorf("unexpected github error: %w", err)
+}

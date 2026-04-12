@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL         string        `env:"DATABASE_URL,required" envDefault:"postgres://app:app@localhost:5432/app?sslmode=disable"`
 	MigrationsPath      string        `env:"MIGRATIONS_PATH" envDefault:"file://migrations"`
 	DatabasePingTimeout time.Duration `env:"DATABASE_PING_TIMEOUT" envDefault:"5s"`
+	ScannerInterval     time.Duration `env:"SCANNER_INTERVAL" envDefault:"1m"`
 	GitHubAuthToken     string        `env:"GITHUB_AUTH_TOKEN"`
 	GitHubAPIBaseURL    string        `env:"GITHUB_API_BASE_URL" envDefault:"https://api.github.com"`
 	GitHubAPITimeout    time.Duration `env:"GITHUB_API_TIMEOUT" envDefault:"5s"`

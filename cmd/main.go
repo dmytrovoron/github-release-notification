@@ -21,6 +21,7 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/migrations"
 	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository/postgres"
+	"github.com/dmytrovoron/github-release-notification/internal/scanner"
 	"github.com/dmytrovoron/github-release-notification/internal/service"
 )
 
@@ -85,8 +86,18 @@ func server() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	unsubscribeURLBase, err := url.JoinPath(cfg.AppBaseURL, swaggerSpec.BasePath(), "unsubscribe")
+	if err != nil {
+		log.Fatalln(err)
+	}
 	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, logger, confirmURLBase)
 	restapi.NewSubscriptionHandler(subscriptionService).Register(api)
+
+	scannerRepo := postgres.NewScannerRepository(db)
+	scannerRunner := scanner.NewRunner(logger, scannerRepo, githubClient, notif, cfg.ScannerInterval, unsubscribeURLBase)
+	scannerCtx, scannerCancel := context.WithCancel(context.Background())
+	defer scannerCancel()
+	go scannerRunner.Start(scannerCtx)
 
 	server := restapi.NewServer(api)
 	server.EnabledListeners = []string{cfg.Scheme}
@@ -122,6 +133,7 @@ func server() {
 	}
 
 	if err := server.Serve(); err != nil {
+		scannerCancel()
 		_ = server.Shutdown()
 
 		log.Fatalln(err)

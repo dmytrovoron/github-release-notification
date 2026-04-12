@@ -177,8 +177,9 @@ func TestUnsubscribeEndpointE2E(t *testing.T) {
 }
 
 type e2e struct {
-	client *subclient.GitHubReleaseNotificationAPI
-	db     *sql.DB
+	client         *subclient.GitHubReleaseNotificationAPI
+	db             *sql.DB
+	smtpAPIBaseURL string
 }
 
 func (e *e2e) subscribe(t *testing.T, email, repo string) error {

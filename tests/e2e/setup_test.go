@@ -3,8 +3,10 @@
 package e2e
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	gh "github.com/google/go-github/v84/github"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
@@ -28,6 +31,9 @@ func setup(t *testing.T) e2e {
 	if testing.Short() {
 		t.Skip("skipping e2e test in short mode")
 	}
+
+	githubAuthToken := requireGitHubAuthToken(t)
+
 	configureTestcontainersDockerEnv(t)
 	testcontainers.SkipIfProviderIsNotHealthy(t)
 
@@ -39,19 +45,24 @@ func setup(t *testing.T) e2e {
 	t.Cleanup(func() { _ = nw.Remove(ctx) })
 
 	dbC := startPostgresContainer(t, nw)
-	startSMTPContainer(t, nw)
+	smtpC := startSMTPContainer(t, nw)
 
 	dbHost, err := dbC.Host(ctx)
 	require.NoError(t, err, "resolve db host")
 	dbPort, err := dbC.MappedPort(ctx, "5432/tcp")
 	require.NoError(t, err, "resolve db port")
 
-	appC := startAppContainer(t, repoRoot, nw)
+	appC := startAppContainer(t, repoRoot, nw, githubAuthToken)
+	attachContainerLogsOnFailure(t, appC, "app")
 
 	appHost, err := appC.Host(ctx)
 	require.NoError(t, err, "resolve app host")
 	appPort, err := appC.MappedPort(ctx, "8080/tcp")
 	require.NoError(t, err, "resolve app port")
+	smtpHost, err := smtpC.Host(ctx)
+	require.NoError(t, err, "resolve smtp host")
+	smtpHTTPPort, err := smtpC.MappedPort(ctx, "8025/tcp")
+	require.NoError(t, err, "resolve smtp http port")
 
 	databaseURL := fmt.Sprintf("postgres://app:app@%s/app?sslmode=disable", net.JoinHostPort(dbHost, dbPort.Port()))
 
@@ -62,9 +73,85 @@ func setup(t *testing.T) e2e {
 	client := newTestAPIClient(t, fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())))
 
 	return e2e{
-		client: client,
-		db:     db,
+		client:         client,
+		db:             db,
+		smtpAPIBaseURL: fmt.Sprintf("http://%s", net.JoinHostPort(smtpHost, smtpHTTPPort.Port())),
 	}
+}
+
+func attachContainerLogsOnFailure(t *testing.T, c testcontainers.Container, containerName string) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		reader, err := c.Logs(ctx)
+		if err != nil {
+			t.Logf("failed to read %s container logs: %v", containerName, err)
+
+			return
+		}
+		defer func() { _ = reader.Close() }()
+
+		logBytes, err := io.ReadAll(reader)
+		if err != nil {
+			t.Logf("failed to consume %s container logs: %v", containerName, err)
+
+			return
+		}
+
+		const maxLogBytes = 200_000
+		if len(logBytes) > maxLogBytes {
+			t.Logf(
+				"%s container logs (truncated, showing last %d of %d bytes):\n%s",
+				containerName,
+				maxLogBytes,
+				len(logBytes),
+				string(logBytes[len(logBytes)-maxLogBytes:]),
+			)
+
+			return
+		}
+
+		t.Logf("%s container logs:\n%s", containerName, string(logBytes))
+	})
+}
+
+func requireGitHubAuthToken(t *testing.T) string {
+	t.Helper()
+
+	token := strings.TrimSpace(os.Getenv("GITHUB_AUTH_TOKEN"))
+	if token == "" {
+		// https://github.com/settings/personal-access-tokens/new
+		t.Skip("set GITHUB_AUTH_TOKEN with access to dmytrovoron/github-release-notification-e2e-test to run scanner e2e")
+	}
+
+	return token
+}
+
+type e2eScanner struct {
+	e2e
+
+	gh *gh.Client
+}
+
+func setupScanner(t *testing.T) e2eScanner {
+	t.Helper()
+
+	t.Setenv("SCANNER_INTERVAL", "2s")
+
+	githubAuthToken := requireGitHubAuthToken(t)
+	ghClient := gh.NewClient(&http.Client{Timeout: 20 * time.Second}).WithAuthToken(githubAuthToken)
+	e2eScan := e2eScanner{gh: ghClient}
+	e2eScan.requireRepositoryAccess(t, scannerE2ERepository)
+	e2eScan.e2e = setup(t)
+
+	return e2eScan
 }
 
 func configureTestcontainersDockerEnv(t *testing.T) {
@@ -144,8 +231,8 @@ func startSMTPContainer(t *testing.T, nw *testcontainers.DockerNetwork) testcont
 		t.Context(),
 		"axllent/mailpit:v1.27",
 		network.WithNetwork([]string{"smtp"}, nw),
-		testcontainers.WithExposedPorts("1025/tcp"),
-		testcontainers.WithWaitStrategy(wait.ForListeningPort("1025/tcp").WithStartupTimeout(20*time.Second)),
+		testcontainers.WithExposedPorts("1025/tcp", "8025/tcp"),
+		testcontainers.WithWaitStrategy(wait.ForHTTP("/api/v1/info").WithPort("8025/tcp").WithStartupTimeout(20*time.Second)),
 	)
 	require.NoError(t, err, "start smtp container")
 
@@ -154,8 +241,26 @@ func startSMTPContainer(t *testing.T, nw *testcontainers.DockerNetwork) testcont
 	return c
 }
 
-func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerNetwork) testcontainers.Container {
+func startAppContainer(
+	t *testing.T,
+	repoRoot string,
+	nw *testcontainers.DockerNetwork,
+	githubAuthToken string,
+) testcontainers.Container {
 	t.Helper()
+
+	appEnv := map[string]string{
+		"DATABASE_URL":          "postgres://app:app@db:5432/app?sslmode=disable",
+		"MIGRATIONS_PATH":       "file:///app/migrations",
+		"DATABASE_PING_TIMEOUT": "10s",
+		"GITHUB_API_TIMEOUT":    "5s",
+		"GITHUB_AUTH_TOKEN":     githubAuthToken,
+		"SMTP_HOST":             "smtp",
+		"SMTP_PORT":             "1025",
+	}
+	if scannerInterval := strings.TrimSpace(os.Getenv("SCANNER_INTERVAL")); scannerInterval != "" {
+		appEnv["SCANNER_INTERVAL"] = scannerInterval
+	}
 
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
@@ -163,14 +268,7 @@ func startAppContainer(t *testing.T, repoRoot string, nw *testcontainers.DockerN
 				Context:    repoRoot,
 				Dockerfile: "Dockerfile",
 			},
-			Env: map[string]string{
-				"DATABASE_URL":          "postgres://app:app@db:5432/app?sslmode=disable",
-				"MIGRATIONS_PATH":       "file:///app/migrations",
-				"DATABASE_PING_TIMEOUT": "10s",
-				"GITHUB_API_TIMEOUT":    "5s",
-				"SMTP_HOST":             "smtp",
-				"SMTP_PORT":             "1025",
-			},
+			Env:          appEnv,
 			ExposedPorts: []string{"8080/tcp"},
 			WaitingFor: wait.ForHTTP("/healthz").
 				WithPort("8080/tcp").

@@ -16,6 +16,14 @@ type ConfirmationEmail struct {
 	ConfirmURL   string
 }
 
+// ReleaseEmail carries the data needed to notify about a new release.
+type ReleaseEmail struct {
+	Email          string
+	Repository     string
+	Tag            string
+	UnsubscribeURL string
+}
+
 // NotifierConfig defines SMTP settings used by notifier.
 type NotifierConfig struct {
 	SMTPHost     string
@@ -51,6 +59,20 @@ func (n *Notifier) SendConfirmation(ctx context.Context, email ConfirmationEmail
 	})
 	if err != nil {
 		return fmt.Errorf("send confirmation email: %w", err)
+	}
+
+	return nil
+}
+
+func (n *Notifier) SendRelease(ctx context.Context, email ReleaseEmail) error {
+	err := n.sender.SendRelease(ctx, integrationemail.ReleaseMessage{
+		Email:          email.Email,
+		Repository:     email.Repository,
+		Tag:            email.Tag,
+		UnsubscribeURL: email.UnsubscribeURL,
+	})
+	if err != nil {
+		return fmt.Errorf("send release email: %w", err)
 	}
 
 	return nil

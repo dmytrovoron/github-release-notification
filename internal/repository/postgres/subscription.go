@@ -122,10 +122,12 @@ func (r *SubscriptionRepository) FindByUnsubscribeToken(ctx context.Context, tok
 
 func (r *SubscriptionRepository) ListActiveByEmail(ctx context.Context, email string) ([]repository.Subscription, error) {
 	const query = `
-		SELECT id, email, repository, status, confirm_token, unsubscribe_token, created_at, updated_at
-		FROM subscriptions
-		WHERE email = $1 AND status = 'active'
-		ORDER BY created_at DESC
+		SELECT s.id, s.email, s.repository, COALESCE(rs.last_seen_tag, ''),
+		       s.status, s.confirm_token, s.unsubscribe_token, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN repository_states rs ON rs.repository = s.repository
+		WHERE s.email = $1 AND s.status = 'active'
+		ORDER BY s.created_at DESC
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, email)
@@ -143,6 +145,7 @@ func (r *SubscriptionRepository) ListActiveByEmail(ctx context.Context, email st
 			&item.ID,
 			&item.Email,
 			&item.Repository,
+			&item.LastSeenTag,
 			&item.Status,
 			&item.ConfirmToken,
 			&item.UnsubscribeToken,
