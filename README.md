@@ -24,17 +24,29 @@ The service has three runtime components working together:
 docker compose up --build
 ```
 
-2. Open HTML page to subscribe to repos:
+2. Open the HTML page to subscribe to repositories and enter a valid email and GitHub repository:
 
 - http://localhost:8080
 
-3. Open Mailpit UI to inspect confirmation and release notification emails:
+<img src="docs/1_subscribe.png" alt="Subscribe" width="70%" />
+
+3. Open the Mailpit UI to inspect the confirmation email:
 
 - http://localhost:8025
 
-4. Open Swagger documentation to perform API requests:
+<img src="docs/2_email_confirm_subscription.png" alt="Email confirmation" width="70%" />
 
-- http://localhost:8080/api/docs
+4. Press "Confirm" to view the confirmation HTML page:
+
+<img src="docs/3_subscription_confirmed.png" alt="Subscription confirmed" width="70%" />
+
+5. Receive the release notification email:
+
+<img src="docs/4_email_new_release.png" alt="Email new release" width="70%" />
+
+6. Press "Unsubscribe these notifications" to stop receiving release emails:
+
+<img src="docs/5_unsubscribe.png" alt="Unsubscribe confirmed" width="70%" />
 
 ## Architecture
 
@@ -63,21 +75,13 @@ Flow summary:
 
 Base path: `/api`
 
-### Endpoints
+Open the Swagger documentation to view available API operations:
 
-- `POST /api/subscribe`
-  - Inputs: `email`, `repo` (form fields)
-  - Validates repository format (`owner/repo`) and checks repository existence via GitHub API
-- `GET /api/confirm/{token}`
-  - Activates a pending subscription
-- `GET /api/unsubscribe/{token}`
-  - Marks subscription as unsubscribed
-- `GET /api/subscriptions?email={email}`
-  - Returns active subscriptions for an email
+- http://localhost:8080/api/docs
 
-OpenAPI contract is defined in `api/swagger.yaml`.
+<img src="docs/api_docs.png" alt="Swagger API Documentation" width="50%" />
 
-### HTML and docs pages
+### HTML and documentation pages
 
 - `GET /` serves the HTML UI.
 - `GET /confirm/{token}` serves the confirmation HTML page.
