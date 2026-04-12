@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-openapi/runtime"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/models"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/models"
 )
 
 // GetSubscriptionsOKCode is the HTTP code returned for type GetSubscriptionsOK

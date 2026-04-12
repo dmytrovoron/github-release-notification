@@ -9,9 +9,9 @@ import (
 	"github.com/go-openapi/runtime/middleware"
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
-	"github.com/dmytrovoron/github-release-notification/internal/http/models"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations/subscription"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/models"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations/subscription"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api"
 )
 

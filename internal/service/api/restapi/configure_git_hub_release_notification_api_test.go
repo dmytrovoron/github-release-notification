@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
 )
 
 func TestDocsEndpointServesSwaggerUI(t *testing.T) {

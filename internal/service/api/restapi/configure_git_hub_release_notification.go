@@ -11,11 +11,11 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations/subscription"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations/subscription"
 )
 
-//go:generate go tool -modfile=../../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate server --spec ../../../api/swagger.yaml --target ../ --name GitHubReleaseNotification --exclude-main
+//go:generate go tool -modfile=../../../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate server --spec ../../../../api/swagger.yaml --target ../ --name GitHubReleaseNotification --exclude-main
 
 func configureFlags(api *operations.GitHubReleaseNotificationAPI) {
 	_ = api

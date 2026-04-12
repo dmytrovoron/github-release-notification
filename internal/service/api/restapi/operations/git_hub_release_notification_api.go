@@ -16,7 +16,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations/subscription"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations/subscription"
 )
 
 // NewGitHubReleaseNotificationAPI creates a new GitHubReleaseNotification instance

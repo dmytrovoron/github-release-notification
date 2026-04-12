@@ -24,7 +24,7 @@ import (
 	"github.com/go-openapi/runtime/flagext"
 	"github.com/go-openapi/swag"
 
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
 )
 
 const (
