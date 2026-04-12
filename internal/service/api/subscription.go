@@ -1,4 +1,4 @@
-package service
+package api
 
 import (
 	"context"
@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
-	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
+	"github.com/dmytrovoron/github-release-notification/internal/service/notifier"
 )
 
 const maxTokenLength = 8

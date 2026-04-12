@@ -12,7 +12,7 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/http/models"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations/subscription"
-	"github.com/dmytrovoron/github-release-notification/internal/service"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api"
 )
 
 type SubscriptionService interface {
@@ -48,11 +48,11 @@ func (h *SubscriptionHandler) subscribe(params subscription.SubscribeParams) mid
 	switch {
 	case err == nil:
 		return subscription.NewSubscribeOK()
-	case errors.Is(err, service.ErrInvalidEmail), errors.Is(err, service.ErrInvalidRepository):
+	case errors.Is(err, api.ErrInvalidEmail), errors.Is(err, api.ErrInvalidRepository):
 		return subscription.NewSubscribeBadRequest()
-	case errors.Is(err, service.ErrRepositoryNotFound):
+	case errors.Is(err, api.ErrRepositoryNotFound):
 		return subscription.NewSubscribeNotFound()
-	case errors.Is(err, service.ErrSubscriptionConflict):
+	case errors.Is(err, api.ErrSubscriptionConflict):
 		return subscription.NewSubscribeConflict()
 	default:
 		return middleware.Error(http.StatusInternalServerError, err.Error())
@@ -69,9 +69,9 @@ func (h *SubscriptionHandler) confirmSubscription(params subscription.ConfirmSub
 	switch {
 	case err == nil:
 		return subscription.NewConfirmSubscriptionOK()
-	case errors.Is(err, service.ErrInvalidToken):
+	case errors.Is(err, api.ErrInvalidToken):
 		return subscription.NewConfirmSubscriptionBadRequest()
-	case errors.Is(err, service.ErrTokenNotFound):
+	case errors.Is(err, api.ErrTokenNotFound):
 		return subscription.NewConfirmSubscriptionNotFound()
 	default:
 		return middleware.Error(http.StatusInternalServerError, err.Error())
@@ -88,9 +88,9 @@ func (h *SubscriptionHandler) unsubscribe(params subscription.UnsubscribeParams)
 	switch {
 	case err == nil:
 		return subscription.NewUnsubscribeOK()
-	case errors.Is(err, service.ErrInvalidToken):
+	case errors.Is(err, api.ErrInvalidToken):
 		return subscription.NewUnsubscribeBadRequest()
-	case errors.Is(err, service.ErrTokenNotFound):
+	case errors.Is(err, api.ErrTokenNotFound):
 		return subscription.NewUnsubscribeNotFound()
 	default:
 		return middleware.Error(http.StatusInternalServerError, err.Error())
@@ -106,7 +106,7 @@ func (h *SubscriptionHandler) getSubscriptions(params subscription.GetSubscripti
 
 	switch {
 	case err == nil:
-	case errors.Is(err, service.ErrInvalidEmail):
+	case errors.Is(err, api.ErrInvalidEmail):
 		return subscription.NewGetSubscriptionsBadRequest()
 	default:
 		return middleware.Error(http.StatusInternalServerError, err.Error())

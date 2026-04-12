@@ -22,10 +22,10 @@ import (
 	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/integration/github"
 	"github.com/dmytrovoron/github-release-notification/internal/migrations"
-	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository/postgres"
-	"github.com/dmytrovoron/github-release-notification/internal/scanner"
-	"github.com/dmytrovoron/github-release-notification/internal/service"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api"
+	"github.com/dmytrovoron/github-release-notification/internal/service/notifier"
+	"github.com/dmytrovoron/github-release-notification/internal/service/scanner"
 )
 
 func main() {
@@ -73,7 +73,7 @@ func server() error {
 		return fmt.Errorf("load swagger spec: %w", err)
 	}
 
-	api := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
+	releaseNotificationAPI := operations.NewGitHubReleaseNotificationAPI(swaggerSpec)
 	githubClient := github.NewClient(cfg.GitHubAuthToken, cfg.GitHubAPITimeout).WithBaseURL(cfg.GitHubAPIBaseURL)
 
 	subscriptionRepo := postgres.NewSubscriptionRepository(db)
@@ -103,8 +103,8 @@ func server() error {
 	}
 
 	apiLogger := baseLogger.With("appType", "api")
-	subscriptionService := service.NewSubscriptionService(subscriptionRepo, githubClient, notif, apiLogger, confirmURLBase)
-	restapi.NewSubscriptionHandler(subscriptionService, apiLogger).Register(api)
+	subscriptionService := api.NewSubscriptionService(subscriptionRepo, githubClient, notif, apiLogger, confirmURLBase)
+	restapi.NewSubscriptionHandler(subscriptionService, apiLogger).Register(releaseNotificationAPI)
 
 	appCtx, appCancel := context.WithCancel(context.Background())
 	defer appCancel()
@@ -125,9 +125,9 @@ func server() error {
 		notifierRunner.Start(appCtx)
 	})
 
-	server := restapi.NewServer(api)
+	server := restapi.NewServer(releaseNotificationAPI)
 	server.EnabledListeners = []string{cfg.Scheme}
-	server.SetHandler(restapi.NewHandler(api, func(checkCtx context.Context) error {
+	server.SetHandler(restapi.NewHandler(releaseNotificationAPI, func(checkCtx context.Context) error {
 		pingCtx, pingCancel := context.WithTimeout(checkCtx, 2*time.Second)
 		defer pingCancel()
 
@@ -156,7 +156,7 @@ func server() error {
 	parser.LongDescription = "GitHub Release Notification API that allows users to subscribe to email notifications " +
 		"about new releases of a chosen GitHub repository."
 
-	for _, optsGroup := range api.CommandLineOptionsGroups {
+	for _, optsGroup := range releaseNotificationAPI.CommandLineOptionsGroups {
 		_, err := parser.AddGroup(optsGroup.ShortDescription, optsGroup.LongDescription, optsGroup.Options)
 		if err != nil {
 			return fmt.Errorf("register command line options: %w", err)
