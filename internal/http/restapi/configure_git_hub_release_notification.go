@@ -1,5 +1,3 @@
-// This file is safe to edit. Once it exists it will not be overwritten.
-
 package restapi
 
 import (
@@ -20,7 +18,6 @@ import (
 //go:generate go tool -modfile=../../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate server --spec ../../../api/swagger.yaml --target ../ --name GitHubReleaseNotification --exclude-main
 
 func configureFlags(api *operations.GitHubReleaseNotificationAPI) {
-	// api.CommandLineOptionsGroups = []swag.CommandLineOptionsGroup{ ... }
 	_ = api
 }
 
@@ -38,29 +35,19 @@ func configureAPIWithHealthChecker(
 	healthChecker func(context.Context) error,
 	logger *slog.Logger,
 ) http.Handler {
-	// Configure the API here
 	api.ServeError = errors.ServeError
 
-	// Set your custom logger if needed. Default one is log.Printf
-	// Expected interface func(string, ...any)
-	//
-	// Example:
-	// api.Logger = log.Printf
 	api.Logger = func(msg string, args ...any) {
 		logger.Info(fmt.Sprintf(msg, args...))
 	}
 
 	api.UseSwaggerUI()
-	// To continue using redoc as your UI, uncomment the following line
-	// api.UseRedoc()
+	api.UseRedoc()
 
 	api.JSONConsumer = runtime.JSONConsumer()
 	api.UrlformConsumer = runtime.DiscardConsumer
 
 	api.JSONProducer = runtime.JSONProducer()
-
-	// You may change here the memory limit for this multipart form parser. Below is the default (32 MB).
-	// subscription.SubscribeMaxParseMemory = 32 << 20
 
 	if api.SubscriptionConfirmSubscriptionHandler == nil {
 		api.SubscriptionConfirmSubscriptionHandler = subscription.ConfirmSubscriptionHandlerFunc(
@@ -108,7 +95,6 @@ func configureAPIWithHealthChecker(
 
 // The TLS configuration before HTTPS server starts.
 func configureTLS(tlsConfig *tls.Config) {
-	// Make all necessary changes to the TLS configuration here.
 	_ = tlsConfig
 }
 
