@@ -1,7 +1,7 @@
-package scanner
+package scanner_test
 
 import (
-	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -10,37 +10,100 @@ import (
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
+	service "github.com/dmytrovoron/github-release-notification/internal/service/scanner"
 )
 
-type fakeGitHubClient struct {
-	tags map[string]string
-}
+func TestRunner_RunOnce_MissingBranches_TableDriven(t *testing.T) {
+	t.Parallel()
 
-func (f *fakeGitHubClient) LatestReleaseTag(_ context.Context, owner, repo string) (string, error) {
-	return f.tags[owner+"/"+repo], nil
-}
-
-type fakeScannerRepository struct {
-	subscriptions []repository.Subscription
-	results       map[string]repository.RepositoryTagUpdateResult
-	advanced      []string
-}
-
-func (f *fakeScannerRepository) ListActive(_ context.Context) ([]repository.Subscription, error) {
-	return f.subscriptions, nil
-}
-
-func (f *fakeScannerRepository) AdvanceRepositoryTag(
-	_ context.Context,
-	repositoryName string,
-	_ string,
-) (repository.RepositoryTagUpdateResult, error) {
-	f.advanced = append(f.advanced, repositoryName)
-	if result, ok := f.results[repositoryName]; ok {
-		return result, nil
+	tests := []struct {
+		name              string
+		repo              *fakeScannerRepository
+		github            *fakeGitHubClient
+		wantGitHubCalls   []string
+		wantAdvancedRepos []string
+	}{
+		{
+			name:              "empty active subscriptions exits early",
+			repo:              &fakeScannerRepository{subscriptions: []repository.Subscription{}},
+			github:            &fakeGitHubClient{tags: map[string]string{}},
+			wantGitHubCalls:   []string{},
+			wantAdvancedRepos: []string{},
+		},
+		{
+			name: "invalid repository name is skipped",
+			repo: &fakeScannerRepository{subscriptions: []repository.Subscription{
+				{ID: 1, Email: "a@example.com", Repository: "invalid", Status: app.SubscriptionStatusActive},
+			}},
+			github:            &fakeGitHubClient{tags: map[string]string{}},
+			wantGitHubCalls:   []string{},
+			wantAdvancedRepos: []string{},
+		},
+		{
+			name: "github fetch failure continues without advance",
+			repo: &fakeScannerRepository{subscriptions: []repository.Subscription{
+				{ID: 1, Email: "a@example.com", Repository: "golang/go", Status: app.SubscriptionStatusActive},
+			}},
+			github: &fakeGitHubClient{
+				tags:            map[string]string{"golang/go": "v1.2.3"},
+				errByRepository: map[string]error{"golang/go": errors.New("github unavailable")},
+			},
+			wantGitHubCalls:   []string{"golang/go"},
+			wantAdvancedRepos: []string{},
+		},
+		{
+			name: "advance failure still attempts advance once",
+			repo: &fakeScannerRepository{
+				subscriptions: []repository.Subscription{
+					{ID: 1, Email: "a@example.com", Repository: "golang/go", Status: app.SubscriptionStatusActive},
+				},
+				advanceErrByRepository: map[string]error{"golang/go": errors.New("db failure")},
+			},
+			github:            &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}},
+			wantGitHubCalls:   []string{"golang/go"},
+			wantAdvancedRepos: []string{"golang/go"},
+		},
+		{
+			name: "duplicate subscribers call github once per repository",
+			repo: &fakeScannerRepository{
+				subscriptions: []repository.Subscription{
+					{ID: 1, Email: "a@example.com", Repository: "golang/go", Status: app.SubscriptionStatusActive},
+					{ID: 2, Email: "b@example.com", Repository: "golang/go", Status: app.SubscriptionStatusActive},
+				},
+				results: map[string]repository.RepositoryTagUpdateResult{"golang/go": repository.RepositoryTagChanged},
+			},
+			github:            &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}},
+			wantGitHubCalls:   []string{"golang/go"},
+			wantAdvancedRepos: []string{"golang/go"},
+		},
 	}
 
-	return repository.RepositoryTagUnchanged, nil
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			runner := service.NewRunner(
+				slog.New(slog.DiscardHandler),
+				tc.repo,
+				tc.github,
+				time.Second,
+			)
+
+			runner.RunOnce(t.Context())
+
+			if len(tc.wantGitHubCalls) == 0 {
+				assert.Empty(t, tc.github.called)
+			} else {
+				assert.Equal(t, tc.wantGitHubCalls, tc.github.called)
+			}
+
+			if len(tc.wantAdvancedRepos) == 0 {
+				assert.Empty(t, tc.repo.advanced)
+			} else {
+				assert.Equal(t, tc.wantAdvancedRepos, tc.repo.advanced)
+			}
+		})
+	}
 }
 
 func TestRunner_RunOnce_RepositoryTagChanged_AdvancesTag(t *testing.T) {
@@ -67,7 +130,7 @@ func TestRunner_RunOnce_RepositoryTagChanged_AdvancesTag(t *testing.T) {
 	}
 	githubClient := &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}}
 
-	runner := NewRunner(
+	runner := service.NewRunner(
 		slog.New(slog.DiscardHandler),
 		repo,
 		githubClient,
@@ -115,7 +178,7 @@ func TestRunner_RunOnce_InitializedOrUnchanged_AdvancesTag(t *testing.T) {
 			}
 			githubClient := &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}}
 
-			runner := NewRunner(
+			runner := service.NewRunner(
 				slog.New(slog.DiscardHandler),
 				repo,
 				githubClient,
