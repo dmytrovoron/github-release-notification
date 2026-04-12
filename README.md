@@ -6,25 +6,58 @@
 
 Monolithic Go service for managing email subscriptions to GitHub repository releases.
 
-The current implementation focuses on subscription lifecycle APIs:
-- subscribe to a repository release stream
-- confirm subscription via token
-- unsubscribe via token
-- list active subscriptions for an email
+The service has three runtime components working together:
+- API: manages subscriptions and confirmation flow
+- Scanner: polls GitHub releases and updates repository tags in storage
+- Notifier: sends confirmation emails and release emails for subscriptions with newly detected tags
+
+## Prerequisites
+
+- Go 1.26+
+- Docker + Docker Compose
+
+## Quick Start
+
+1. Start all services:
+
+```bash
+docker compose up --build
+```
+
+2. Open HTML page to subscribe to repos:
+
+- http://localhost:8080
+
+3. Open Mailpit UI to inspect confirmation and release notification emails:
+
+- http://localhost:8025
+
+4. Open Swagger documentation to perform API requests:
+
+- http://localhost:8080/api/docs
 
 ## Architecture
 
 ```mermaid
-flowchart LR
-  User[User or Client] --> API[Go API Service]
+flowchart TB
+  User[User / Browser] --> API[API Service]
   API --> DB[(PostgreSQL)]
   API --> GH[GitHub API]
-  API --> SMTP[SMTP Server / Mailpit]
+  API --> SMTP[SMTP]
+
+  Scanner[Scanner Worker] --> DB
+  Scanner --> GH
+
+  Notifier[Notifier Worker] --> DB
+  Notifier --> SMTP
+
   SMTP --> Inbox[Subscriber Inbox]
 ```
 
-The API validates repositories against GitHub, stores subscription state in PostgreSQL,
-and sends confirmation emails through SMTP.
+Flow summary:
+- API validates repositories against GitHub, persists subscriptions, and sends confirmation emails.
+- Scanner periodically checks latest release tags for repositories with active subscriptions.
+- Notifier periodically sends release notifications when Scanner detects a new tag.
 
 ## API
 
@@ -44,33 +77,18 @@ Base path: `/api`
 
 OpenAPI contract is defined in `api/swagger.yaml`.
 
-## Prerequisites
+### HTML and docs pages
 
-- Go 1.26+
-- Docker + Docker Compose
+- `GET /` serves the HTML UI.
+- `GET /confirm/{token}` serves the confirmation HTML page.
+- `GET /unsubscribe/{token}` serves the unsubscribe HTML page.
+- `GET /style.css` and `GET /app.js` serve static UI assets.
+- `GET /api/docs` serves Swagger UI documentation (the docs endpoint).
 
-## Quick Start (Docker)
+## Observability
 
-1. Start all services:
-
-```bash
-docker compose up --build
-```
-
-2. Verify API health:
-
-```bash
-curl -sS http://localhost:8080/healthz
-```
-
-3. Open Mailpit UI to inspect confirmation emails:
-
-- http://localhost:8025
-
-Services started by Compose:
-- app: API server on `:8080`
-- db: PostgreSQL on `:5432`
-- mailpit: SMTP (`:1025`) and UI (`:8025`)
+- `GET /healthz` returns service health status.
+- `GET /metrics` exposes Prometheus-format metrics (request counters, duration sums/counts, in-flight requests, uptime, goroutines).
 
 ## Local Development
 
@@ -83,12 +101,10 @@ docker compose up -d db mailpit
 2. Export environment variables:
 
 ```bash
-export DATABASE_URL='postgres://app:app@localhost:5432/app?sslmode=disable'
-export MIGRATIONS_PATH='file://migrations'
-export SMTP_HOST='localhost'
-export SMTP_PORT='1025'
-export SMTP_FROM='no-reply@github-release-notification.local'
-export APP_BASE_URL='http://localhost:8080'
+cp .env.example .env
+set -a
+source .env
+set +a
 ```
 
 3. Run the app:
@@ -97,52 +113,39 @@ export APP_BASE_URL='http://localhost:8080'
 go run ./cmd
 ```
 
-## Example Requests
-
-Subscribe:
-
-```bash
-curl -i -X POST 'http://localhost:8080/api/subscribe' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  --data-urlencode 'email=user@example.com' \
-  --data-urlencode 'repo=golang/go'
-```
-
-Confirm (replace token from email):
-
-```bash
-curl -i 'http://localhost:8080/api/confirm/<token>'
-```
-
-List subscriptions:
-
-```bash
-curl -i 'http://localhost:8080/api/subscriptions?email=user@example.com'
-```
-
-Unsubscribe (replace token from email):
-
-```bash
-curl -i 'http://localhost:8080/api/unsubscribe/<token>'
-```
-
 ## Configuration
 
-Environment variables consumed by the service:
+Use `.env.example` as the source of truth for local and CI configuration.
 
-- `DATABASE_URL` (default: `postgres://app:app@localhost:5432/app?sslmode=disable`)
-- `MIGRATIONS_PATH` (default: `file://migrations`)
-- `DATABASE_PING_TIMEOUT` (default: `5s`)
-- `GITHUB_AUTH_TOKEN` (optional; raises GitHub API rate limit)
-- `GITHUB_API_BASE_URL` (default: `https://api.github.com`)
-- `GITHUB_API_TIMEOUT` (default: `5s`)
-- `SMTP_HOST` (default: `localhost`)
-- `SMTP_PORT` (default: `1025`)
-- `SMTP_FROM` (default: `no-reply@github-release-notification.local`)
-- `SMTP_USERNAME` (optional)
-- `SMTP_PASSWORD` (optional)
-- `APP_BASE_URL` (default: `http://localhost:8080`)
-- `SCHEME` (default: `http`)
+### API
+
+- `APP_BASE_URL` public service URL used for links in emails
+- `SCHEME` listener scheme (`http` or `https`)
+
+### Database
+
+- `DATABASE_URL` PostgreSQL DSN
+- `MIGRATIONS_PATH` migration source path (for local files, `file://migrations`)
+- `DATABASE_PING_TIMEOUT` startup ping timeout
+
+### GitHub API
+
+- `GITHUB_AUTH_TOKEN` optional token; increases rate limits
+- `GITHUB_API_BASE_URL` GitHub API base URL (can target GitHub Enterprise)
+- `GITHUB_API_TIMEOUT` per-request timeout
+
+### SMTP
+
+- `SMTP_HOST` SMTP host
+- `SMTP_PORT` SMTP port
+- `SMTP_FROM` sender address
+- `SMTP_USERNAME` optional SMTP username
+- `SMTP_PASSWORD` optional SMTP password
+
+### Workers
+
+- `SCANNER_INTERVAL` scanner polling interval
+- `NOTIFIER_INTERVAL` notifier run interval
 
 ## Migrations
 
@@ -162,33 +165,32 @@ make test
 Additional useful targets:
 
 ```bash
+make tidy
+make fix
 make test-unit
 make test-integration
 make test-e2e
+make ci
+```
+
+## Security
+
+Run [Go vulnerability](https://go.dev/blog/govulncheck) scanning with:
+
+```bash
 make govulncheck
 ```
 
-## E2E Tests
+This runs `govulncheck` and enforces the repository policy from `scripts/check-govulncheck.sh`.
 
-The e2e suite reads its environment from the repository root `.env` file.
+## GitHub Actions
 
-1. Create the file from the example:
+The CI workflow in `.github/workflows/ci.yml` runs on `push` to `main` and on pull requests.
 
-```bash
-cp .env.example .env
-```
-
-2. Set `GITHUB_AUTH_TOKEN` in `.env` to a token that can read `dmytrovoron/github-release-notification-e2e-test`.
-
-3. Adjust the `E2E_*` variables in `.env` only if you need to override the default container wiring used by the test harness.
-
-4. Run the suite:
-
-```bash
-make test-e2e
-```
-
-## Notes
-
-- Confirmation email delivery errors are logged and do not fail subscription creation.
-- Current codebase includes core subscription flows and infrastructure. Release scanning/notification scheduling can be added on top of the existing data model and integrations.
+It includes:
+- dependency checks (`go generate`, `go mod tidy -diff`, `go mod verify`)
+- linting with `golangci-lint`
+- vulnerability checks with `govulncheck`
+- unit/integration/e2e test jobs
+- build validation (`go build ./...`)
+- docker compose smoke test with health check
