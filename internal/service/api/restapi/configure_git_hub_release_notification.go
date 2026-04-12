@@ -128,7 +128,9 @@ func setupMiddlewares(handler http.Handler) http.Handler {
 // The middleware configuration happens before anything, this middleware also applies to serving the swagger.json document.
 // So this is a good place to plug in a panic handling middleware, logging and metrics.
 func setupGlobalMiddleware(handler http.Handler, healthChecker func(context.Context) error, logger *slog.Logger) http.Handler {
-	return healthcheckMiddleware(healthChecker, logger)(loggingMiddleware(logger)(staticPagesMiddleware(handler)))
+	metrics := metricsMiddleware(newMetricsRegistry())
+
+	return metrics(healthcheckMiddleware(healthChecker, logger)(loggingMiddleware(logger)(staticPagesMiddleware(handler))))
 }
 
 // staticPagesMiddleware serves the frontend HTML page for the root path and the
