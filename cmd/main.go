@@ -98,10 +98,16 @@ func server() {
 	restapi.NewSubscriptionHandler(subscriptionService, httpLogger).Register(api)
 
 	scannerRepo := postgres.NewScannerRepository(db)
-	scannerRunner := scanner.NewRunner(scannerLogger, scannerRepo, githubClient, notif, cfg.ScannerInterval, unsubscribeURLBase)
+	scannerRunner := scanner.NewRunner(scannerLogger, scannerRepo, githubClient, cfg.ScannerInterval)
 	scannerCtx, scannerCancel := context.WithCancel(context.Background())
 	defer scannerCancel()
 	go scannerRunner.Start(scannerCtx)
+
+	notifierRepo := postgres.NewNotifierRepository(db)
+	notifierRunner := notifier.NewRunner(notifierLogger, notifierRepo, notif, cfg.NotifierInterval, unsubscribeURLBase)
+	notifierCtx, notifierCancel := context.WithCancel(context.Background())
+	defer notifierCancel()
+	go notifierRunner.Start(notifierCtx)
 
 	server := restapi.NewServer(api)
 	server.EnabledListeners = []string{cfg.Scheme}

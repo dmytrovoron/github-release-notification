@@ -25,3 +25,12 @@ type Subscription struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+// PendingNotification represents a subscription that needs a release email sent.
+type PendingNotification struct {
+	SubscriptionID   int64
+	Email            string
+	Repository       string
+	CurrentTag       string
+	UnsubscribeToken string
+}

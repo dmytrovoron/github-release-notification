@@ -7,10 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	app "github.com/dmytrovoron/github-release-notification/internal"
-	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
 )
 
@@ -45,34 +43,22 @@ func (f *fakeScannerRepository) AdvanceRepositoryTag(
 	return repository.RepositoryTagUnchanged, nil
 }
 
-type fakeReleaseSender struct {
-	emails []notifier.ReleaseEmail
-}
-
-func (f *fakeReleaseSender) SendRelease(_ context.Context, email notifier.ReleaseEmail) error {
-	f.emails = append(f.emails, email)
-
-	return nil
-}
-
-func TestRunner_RunOnce_RepositoryTagChanged_SendsNotifications(t *testing.T) {
+func TestRunner_RunOnce_RepositoryTagChanged_AdvancesTag(t *testing.T) {
 	t.Parallel()
 
 	repo := &fakeScannerRepository{
 		subscriptions: []repository.Subscription{
 			{
-				ID:               1,
-				Email:            "a@example.com",
-				Repository:       "golang/go",
-				Status:           app.SubscriptionStatusActive,
-				UnsubscribeToken: "aaaabbbbccccdddd",
+				ID:         1,
+				Email:      "a@example.com",
+				Repository: "golang/go",
+				Status:     app.SubscriptionStatusActive,
 			},
 			{
-				ID:               2,
-				Email:            "b@example.com",
-				Repository:       "golang/go",
-				Status:           app.SubscriptionStatusActive,
-				UnsubscribeToken: "1111222233334444",
+				ID:         2,
+				Email:      "b@example.com",
+				Repository: "golang/go",
+				Status:     app.SubscriptionStatusActive,
 			},
 		},
 		results: map[string]repository.RepositoryTagUpdateResult{
@@ -80,27 +66,20 @@ func TestRunner_RunOnce_RepositoryTagChanged_SendsNotifications(t *testing.T) {
 		},
 	}
 	githubClient := &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}}
-	sender := &fakeReleaseSender{}
 
 	runner := NewRunner(
 		slog.New(slog.DiscardHandler),
 		repo,
 		githubClient,
-		sender,
 		time.Second,
-		"http://localhost:8080/api/unsubscribe",
 	)
 
 	runner.RunOnce(t.Context())
 
-	require.Len(t, sender.emails, 2)
-	assert.Equal(t, "a@example.com", sender.emails[0].Email)
-	assert.Equal(t, "v1.2.3", sender.emails[0].Tag)
-	assert.Equal(t, "http://localhost:8080/api/unsubscribe/aaaabbbbccccdddd", sender.emails[0].UnsubscribeURL)
-	assert.Equal(t, "b@example.com", sender.emails[1].Email)
+	assert.Equal(t, []string{"golang/go"}, repo.advanced)
 }
 
-func TestRunner_RunOnce_InitializedOrUnchanged_DoesNotSendNotifications(t *testing.T) {
+func TestRunner_RunOnce_InitializedOrUnchanged_AdvancesTag(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -124,11 +103,10 @@ func TestRunner_RunOnce_InitializedOrUnchanged_DoesNotSendNotifications(t *testi
 			repo := &fakeScannerRepository{
 				subscriptions: []repository.Subscription{
 					{
-						ID:               1,
-						Email:            "a@example.com",
-						Repository:       "golang/go",
-						Status:           app.SubscriptionStatusActive,
-						UnsubscribeToken: "aaaabbbbccccdddd",
+						ID:         1,
+						Email:      "a@example.com",
+						Repository: "golang/go",
+						Status:     app.SubscriptionStatusActive,
 					},
 				},
 				results: map[string]repository.RepositoryTagUpdateResult{
@@ -136,20 +114,17 @@ func TestRunner_RunOnce_InitializedOrUnchanged_DoesNotSendNotifications(t *testi
 				},
 			}
 			githubClient := &fakeGitHubClient{tags: map[string]string{"golang/go": "v1.2.3"}}
-			sender := &fakeReleaseSender{}
 
 			runner := NewRunner(
 				slog.New(slog.DiscardHandler),
 				repo,
 				githubClient,
-				sender,
 				time.Second,
-				"http://localhost:8080/api/unsubscribe",
 			)
 
 			runner.RunOnce(t.Context())
 
-			assert.Empty(t, sender.emails)
+			assert.Equal(t, []string{"golang/go"}, repo.advanced)
 		})
 	}
 }

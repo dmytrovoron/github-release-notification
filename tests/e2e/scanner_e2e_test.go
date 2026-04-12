@@ -4,10 +4,8 @@ package e2e
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -23,7 +21,7 @@ const scannerE2ERepository = "dmytrovoron/github-release-notification-e2e-test"
 func TestScannerE2E(t *testing.T) {
 	e := setupScanner(t)
 
-	t.Run("repository tag changed triggers notification email", func(t *testing.T) {
+	t.Run("repository tag changed updates repository state in database", func(t *testing.T) {
 		email := gofakeit.Email()
 
 		releaseTagInitial := fmt.Sprintf("e2e-scanner-%d", time.Now().UnixNano())
@@ -39,7 +37,7 @@ func TestScannerE2E(t *testing.T) {
 		releaseTag := fmt.Sprintf("e2e-scanner-%d", time.Now().UnixNano())
 		e.createGitHubRelease(t, scannerE2ERepository, releaseTag)
 
-		e.waitForMailpitReleaseEmail(t, email, scannerE2ERepository, releaseTag, 30*time.Second)
+		e.waitForRepositoryStateTagEqual(t, scannerE2ERepository, releaseTag, 30*time.Second)
 	})
 }
 
@@ -132,70 +130,24 @@ func (e *e2e) waitForRepositoryStateTag(t *testing.T, repositoryName string, tim
 	return ""
 }
 
-func (e *e2e) waitForMailpitReleaseEmail(
-	t *testing.T,
-	recipient string,
-	repositoryName string,
-	releaseTag string,
-	timeout time.Duration,
-) {
+func (e *e2e) waitForRepositoryStateTagEqual(t *testing.T, repositoryName, expectedTag string, timeout time.Duration) {
 	t.Helper()
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		found := e.findMailpitReleaseEmail(t, recipient, repositoryName, releaseTag)
-		if found {
+		var tag string
+		//nolint:unqueryvet // it's ok in tests
+		err := e.db.QueryRowContext(
+			t.Context(),
+			"SELECT last_seen_tag FROM repository_states WHERE repository=$1",
+			repositoryName,
+		).Scan(&tag)
+		if err == nil && tag == expectedTag {
 			return
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(1500 * time.Millisecond)
 	}
 
-	t.Fatalf("timed out waiting for release email to %s for %s tag %s", recipient, repositoryName, releaseTag)
-}
-
-func (e *e2e) findMailpitReleaseEmail(t *testing.T, recipient, repositoryName, releaseTag string) bool {
-	t.Helper()
-
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, e.smtpAPIBaseURL+"/api/v1/messages", http.NoBody)
-	require.NoError(t, err, "request mailpit messages")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	require.NoError(t, err, "request mailpit messages")
-	defer func() { _ = resp.Body.Close() }()
-	require.Equal(t, http.StatusOK, resp.StatusCode, "mailpit messages status")
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "read mailpit response")
-
-	//nolint:tagliatelle // mailpit API returns "Subject" and "To" fields with capitalized first letter
-	var payload struct {
-		Messages []struct {
-			Subject string `json:"Subject"`
-			To      []struct {
-				Address string `json:"Address"`
-			} `json:"To"`
-		} `json:"messages"`
-	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		t.Logf("mailpit payload decode failed, body=%s", string(body))
-
-		return false
-	}
-
-	expectedSubject := "New release for " + repositoryName + ": " + releaseTag
-	for i := range payload.Messages {
-		msg := payload.Messages[i]
-		if msg.Subject != expectedSubject {
-			continue
-		}
-		for j := range msg.To {
-			if strings.EqualFold(msg.To[j].Address, recipient) {
-				return true
-			}
-		}
-	}
-
-	return false
+	t.Fatalf("timed out waiting for repository_states.last_seen_tag=%s for %s", expectedTag, repositoryName)
 }

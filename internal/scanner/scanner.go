@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strings"
 	"time"
 
-	"github.com/dmytrovoron/github-release-notification/internal/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/repository"
 )
 
@@ -25,17 +23,11 @@ type ScannerRepository interface {
 	) (repository.RepositoryTagUpdateResult, error)
 }
 
-type ReleaseSender interface {
-	SendRelease(ctx context.Context, email notifier.ReleaseEmail) error
-}
-
 type Runner struct {
-	log                *slog.Logger
-	repo               ScannerRepository
-	github             GitHubClient
-	sender             ReleaseSender
-	interval           time.Duration
-	unsubscribeURLBase string
+	log      *slog.Logger
+	repo     ScannerRepository
+	github   GitHubClient
+	interval time.Duration
 }
 
 type scanStats struct {
@@ -44,29 +36,22 @@ type scanStats struct {
 	changedRepositories     int
 	initializedRepositories int
 	unchangedRepositories   int
-	notificationsSent       int
-	notificationFailures    int
 	invalidRepositories     int
 	githubFailures          int
 	advanceFailures         int
-	unsubscribeURLFailures  int
 }
 
 func NewRunner(
 	log *slog.Logger,
 	repo ScannerRepository,
 	github GitHubClient,
-	sender ReleaseSender,
 	interval time.Duration,
-	unsubscribeURLBase string,
 ) *Runner {
 	return &Runner{
-		log:                log,
-		repo:               repo,
-		github:             github,
-		sender:             sender,
-		interval:           interval,
-		unsubscribeURLBase: unsubscribeURLBase,
+		log:      log,
+		repo:     repo,
+		github:   github,
+		interval: interval,
 	}
 }
 
@@ -188,56 +173,6 @@ func (r *Runner) runScan(ctx context.Context) {
 		if updateResult != repository.RepositoryTagChanged {
 			continue
 		}
-
-		for i := range repoSubscribers {
-			sub := repoSubscribers[i]
-			r.log.InfoContext(
-				ctx,
-				"scanner notifying subscriber",
-				"repository", repositoryName,
-				"subscription_id", sub.ID,
-				"email", sub.Email,
-				"tag", tag,
-			)
-
-			unsubscribeURL, err := url.JoinPath(r.unsubscribeURLBase, sub.UnsubscribeToken)
-			if err != nil {
-				stats.unsubscribeURLFailures++
-				r.log.ErrorContext(
-					ctx,
-					"build unsubscribe url",
-					"repository", repositoryName,
-					"subscription_id", sub.ID,
-					"error", err,
-				)
-
-				continue
-			}
-
-			err = r.sender.SendRelease(ctx, notifier.ReleaseEmail{
-				Email:          sub.Email,
-				Repository:     repositoryName,
-				Tag:            tag,
-				UnsubscribeURL: unsubscribeURL,
-			})
-			if err != nil {
-				stats.notificationFailures++
-				r.log.ErrorContext(
-					ctx,
-					"send release notification",
-					"repository", repositoryName,
-					"subscription_id", sub.ID,
-					"email", sub.Email,
-					"tag", tag,
-					"error", err,
-				)
-
-				continue
-			}
-
-			stats.notificationsSent++
-			r.log.InfoContext(ctx, "release notification sent", "repository", repositoryName, "email", sub.Email, "tag", tag)
-		}
 	}
 
 	r.log.InfoContext(
@@ -249,11 +184,8 @@ func (r *Runner) runScan(ctx context.Context) {
 		"changed_repositories", stats.changedRepositories,
 		"initialized_repositories", stats.initializedRepositories,
 		"unchanged_repositories", stats.unchangedRepositories,
-		"notifications_sent", stats.notificationsSent,
-		"notification_failures", stats.notificationFailures,
 		"invalid_repositories", stats.invalidRepositories,
 		"github_failures", stats.githubFailures,
 		"advance_failures", stats.advanceFailures,
-		"unsubscribe_url_failures", stats.unsubscribeURLFailures,
 	)
 }

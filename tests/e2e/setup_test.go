@@ -262,6 +262,9 @@ func startAppContainer(
 	if scannerInterval := strings.TrimSpace(os.Getenv("SCANNER_INTERVAL")); scannerInterval != "" {
 		appEnv["SCANNER_INTERVAL"] = scannerInterval
 	}
+	if notifierInterval := strings.TrimSpace(os.Getenv("NOTIFIER_INTERVAL")); notifierInterval != "" {
+		appEnv["NOTIFIER_INTERVAL"] = notifierInterval
+	}
 
 	appReq := testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
