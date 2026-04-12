@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/brianvoe/gofakeit/v7"
-	gh "github.com/google/go-github/v84/github"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +19,8 @@ import (
 
 //go:generate go tool -modfile=../../tools/go.mod github.com/go-swagger/go-swagger/cmd/swagger generate client --spec ../../api/swagger.yaml --target ../http
 
+var eAPI e2eAPI
+
 func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 	t.Parallel()
 
@@ -29,7 +30,7 @@ func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		err := e.subscribe(t, email, repo)
+		err := eAPI.subscribe(t, email, repo)
 
 		require.NoError(t, err, "subscribe should succeed")
 	})
@@ -37,7 +38,7 @@ func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 	t.Run("Invalid input: email", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.subscribe(t, "invalid-email", randRealRepo())
+		err := eAPI.subscribe(t, "invalid-email", randRealRepo())
 
 		var badRequest *subscription.SubscribeBadRequest
 		require.ErrorAs(t, err, &badRequest)
@@ -46,7 +47,7 @@ func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 	t.Run("Invalid input: repo", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.subscribe(t, gofakeit.Email(), "invalid/repo/name/with/slashes")
+		err := eAPI.subscribe(t, gofakeit.Email(), "invalid/repo/name/with/slashes")
 
 		var badRequest *subscription.SubscribeBadRequest
 		require.ErrorAs(t, err, &badRequest)
@@ -57,7 +58,7 @@ func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 
 		email := gofakeit.Email()
 
-		err := e.subscribe(t, email, "non-existing/repo-for-test")
+		err := eAPI.subscribe(t, email, "non-existing/repo-for-test")
 
 		var notFound *subscription.SubscribeNotFound
 		require.ErrorAs(t, err, &notFound)
@@ -69,10 +70,10 @@ func TestAPI_SubscribeEndpointE2E(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		err := e.subscribe(t, email, repo)
+		err := eAPI.subscribe(t, email, repo)
 		require.NoError(t, err, "initial subscribe should succeed")
 
-		err = e.subscribe(t, email, repo)
+		err = eAPI.subscribe(t, email, repo)
 		var conflict *subscription.SubscribeConflict
 		require.ErrorAs(t, err, &conflict)
 	})
@@ -87,12 +88,12 @@ func TestAPI_ConfirmEndpointE2E(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		err := e.subscribe(t, email, repo)
+		err := eAPI.subscribe(t, email, repo)
 		require.NoError(t, err, "initial subscribe should succeed")
 
-		token := e.getConfirmTokenByEmail(t, email)
+		token := eAPI.getConfirmTokenByEmail(t, email)
 
-		err = e.confirm(t, token)
+		err = eAPI.confirm(t, token)
 		require.NoError(t, err, "confirm should succeed")
 
 		expectedItems := []*models.Subscription{
@@ -102,7 +103,7 @@ func TestAPI_ConfirmEndpointE2E(t *testing.T) {
 				Confirmed: true,
 			},
 		}
-		actualItems, err := e.getSubscriptions(t, email)
+		actualItems, err := eAPI.getSubscriptions(t, email)
 		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Equal(t, expectedItems, actualItems)
 	})
@@ -110,7 +111,7 @@ func TestAPI_ConfirmEndpointE2E(t *testing.T) {
 	t.Run("Invalid token", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.confirm(t, "abcd")
+		err := eAPI.confirm(t, "abcd")
 
 		var badRequest *subscription.ConfirmSubscriptionBadRequest
 		require.ErrorAs(t, err, &badRequest)
@@ -119,7 +120,7 @@ func TestAPI_ConfirmEndpointE2E(t *testing.T) {
 	t.Run("Token not found", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.confirm(t, "0123456789abcdef")
+		err := eAPI.confirm(t, "0123456789abcdef")
 
 		var notFound *subscription.ConfirmSubscriptionNotFound
 		require.ErrorAs(t, err, &notFound)
@@ -135,9 +136,9 @@ func TestAPI_GetSubscriptionsEndpointE2E(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		err := e.subscribe(t, email, repo)
+		err := eAPI.subscribe(t, email, repo)
 		require.NoError(t, err, "initial subscribe should succeed")
-		e.activateSubscriptionByEmail(t, email)
+		eAPI.activateSubscriptionByEmail(t, email)
 
 		expectedItems := []*models.Subscription{
 			{
@@ -147,7 +148,7 @@ func TestAPI_GetSubscriptionsEndpointE2E(t *testing.T) {
 			},
 		}
 
-		actualItems, err := e.getSubscriptions(t, email)
+		actualItems, err := eAPI.getSubscriptions(t, email)
 		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Equal(t, expectedItems, actualItems)
 	})
@@ -155,7 +156,7 @@ func TestAPI_GetSubscriptionsEndpointE2E(t *testing.T) {
 	t.Run("Invalid email", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := e.getSubscriptions(t, "invalid-email")
+		_, err := eAPI.getSubscriptions(t, "invalid-email")
 
 		var badRequest *subscription.GetSubscriptionsBadRequest
 		require.ErrorAs(t, err, &badRequest)
@@ -171,15 +172,15 @@ func TestAPI_UnsubscribeEndpointE2E(t *testing.T) {
 		email := gofakeit.Email()
 		repo := randRealRepo()
 
-		err := e.subscribe(t, email, repo)
+		err := eAPI.subscribe(t, email, repo)
 		require.NoError(t, err, "initial subscribe should succeed")
-		e.activateSubscriptionByEmail(t, email)
+		eAPI.activateSubscriptionByEmail(t, email)
 
-		token := e.getUnsubscribeTokenByEmail(t, email)
-		err = e.unsubscribe(t, token)
+		token := eAPI.getUnsubscribeTokenByEmail(t, email)
+		err = eAPI.unsubscribe(t, token)
 		require.NoError(t, err, "unsubscribe should succeed")
 
-		actualItems, err := e.getSubscriptions(t, email)
+		actualItems, err := eAPI.getSubscriptions(t, email)
 		require.NoError(t, err, "get subscriptions should succeed")
 		assert.Empty(t, actualItems)
 	})
@@ -187,7 +188,7 @@ func TestAPI_UnsubscribeEndpointE2E(t *testing.T) {
 	t.Run("Invalid token", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.unsubscribe(t, "abcd")
+		err := eAPI.unsubscribe(t, "abcd")
 
 		var badRequest *subscription.UnsubscribeBadRequest
 		require.ErrorAs(t, err, &badRequest)
@@ -196,21 +197,19 @@ func TestAPI_UnsubscribeEndpointE2E(t *testing.T) {
 	t.Run("Token not found", func(t *testing.T) {
 		t.Parallel()
 
-		err := e.unsubscribe(t, "fedcba9876543210")
+		err := eAPI.unsubscribe(t, "fedcba9876543210")
 
 		var notFound *subscription.UnsubscribeNotFound
 		require.ErrorAs(t, err, &notFound)
 	})
 }
 
-type e2e struct {
-	client         *subclient.GitHubReleaseNotificationAPI
-	db             *sql.DB
-	smtpAPIBaseURL string
-	gh             *gh.Client
+type e2eAPI struct {
+	client *subclient.GitHubReleaseNotificationAPI
+	db     *sql.DB
 }
 
-func (e *e2e) subscribe(t *testing.T, email, repo string) error {
+func (e *e2eAPI) subscribe(t *testing.T, email, repo string) error {
 	t.Helper()
 
 	params := subscription.NewSubscribeParamsWithContext(t.Context()).WithEmail(email).WithRepo(repo)
@@ -219,7 +218,7 @@ func (e *e2e) subscribe(t *testing.T, email, repo string) error {
 	return err
 }
 
-func (e *e2e) confirm(t *testing.T, token string) error {
+func (e *e2eAPI) confirm(t *testing.T, token string) error {
 	t.Helper()
 
 	params := subscription.NewConfirmSubscriptionParamsWithContext(t.Context()).WithToken(token)
@@ -228,7 +227,7 @@ func (e *e2e) confirm(t *testing.T, token string) error {
 	return err
 }
 
-func (e *e2e) unsubscribe(t *testing.T, token string) error {
+func (e *e2eAPI) unsubscribe(t *testing.T, token string) error {
 	t.Helper()
 
 	params := subscription.NewUnsubscribeParamsWithContext(t.Context()).WithToken(token)
@@ -237,7 +236,7 @@ func (e *e2e) unsubscribe(t *testing.T, token string) error {
 	return err
 }
 
-func (e *e2e) getSubscriptions(t *testing.T, email string) ([]*models.Subscription, error) {
+func (e *e2eAPI) getSubscriptions(t *testing.T, email string) ([]*models.Subscription, error) {
 	t.Helper()
 
 	params := subscription.NewGetSubscriptionsParamsWithContext(t.Context()).WithEmail(email)
@@ -249,14 +248,14 @@ func (e *e2e) getSubscriptions(t *testing.T, email string) ([]*models.Subscripti
 	return result.Payload, nil
 }
 
-func (e *e2e) activateSubscriptionByEmail(t *testing.T, email string) {
+func (e *e2eAPI) activateSubscriptionByEmail(t *testing.T, email string) {
 	t.Helper()
 
 	_, err := e.db.ExecContext(t.Context(), "UPDATE subscriptions SET status='active' WHERE email=$1", email)
 	require.NoError(t, err, "activate subscription")
 }
 
-func (e *e2e) getConfirmTokenByEmail(t *testing.T, email string) string {
+func (e *e2eAPI) getConfirmTokenByEmail(t *testing.T, email string) string {
 	t.Helper()
 
 	var token string
@@ -266,7 +265,7 @@ func (e *e2e) getConfirmTokenByEmail(t *testing.T, email string) string {
 	return token
 }
 
-func (e *e2e) getUnsubscribeTokenByEmail(t *testing.T, email string) string {
+func (e *e2eAPI) getUnsubscribeTokenByEmail(t *testing.T, email string) string {
 	t.Helper()
 
 	var token string

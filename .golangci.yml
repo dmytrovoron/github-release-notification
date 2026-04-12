@@ -255,6 +255,8 @@ linters:
       - path: _test\.go$
         linters:
           - decorder
+          - gochecknoglobals
+          - goconst
           - gosec
           - wrapcheck
       - path: internal/integration/email/smtp\.go

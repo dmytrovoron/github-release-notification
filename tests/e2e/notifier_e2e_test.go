@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,50 +15,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var eNotifier e2eNotifier
+
 func TestNotifierE2E(t *testing.T) {
 	t.Parallel()
 
 	t.Run("pending subscription receives release notification email", func(t *testing.T) {
 		email := gofakeit.Email()
-		repositoryName := fakeRepository()
+		repositoryName := fakeRepo()
 		tag := "v1.2.3"
 		unsubscribeToken := gofakeit.UUID()
 
-		_, err := e.db.ExecContext(
-			t.Context(),
-			`INSERT INTO subscriptions (email, repository, status, confirm_token, unsubscribe_token)
-			 VALUES ($1, $2, 'active', $3, $4)`,
-			email,
-			repositoryName,
-			gofakeit.UUID(),
-			unsubscribeToken,
-		)
-		require.NoError(t, err, "insert subscription")
+		eNotifier.insertActiveSubscription(t, email, repositoryName, unsubscribeToken)
+		eNotifier.upsertRepositoryStateTag(t, repositoryName, tag)
 
-		_, err = e.db.ExecContext(
-			t.Context(),
-			`INSERT INTO repository_states (repository, last_seen_tag, last_checked_at, updated_at)
-			 VALUES ($1, $2, NOW(), NOW())
-			 ON CONFLICT (repository) DO UPDATE SET last_seen_tag = $2, updated_at = NOW()`,
-			repositoryName,
-			tag,
-		)
-		require.NoError(t, err, "insert repository state")
+		eNotifier.waitForMailpitReleaseEmail(t, email, repositoryName, tag, 30*time.Second)
 
-		e.waitForMailpitReleaseEmail(t, email, repositoryName, tag, 30*time.Second)
-
-		var lastNotifiedTag string
-		err = e.db.QueryRowContext(
-			t.Context(),
-			"SELECT last_notified_tag FROM subscriptions WHERE email=$1",
-			email,
-		).Scan(&lastNotifiedTag)
-		require.NoError(t, err, "get last_notified_tag")
+		lastNotifiedTag := eNotifier.getLastNotifiedTagByEmail(t, email)
 		require.Equal(t, tag, lastNotifiedTag, "last_notified_tag should be updated after email sent")
 	})
 }
 
-func (e *e2e) waitForMailpitReleaseEmail(
+type e2eNotifier struct {
+	smtpAPIBaseURL string
+	db             *sql.DB
+}
+
+func (e *e2eNotifier) insertActiveSubscription(t *testing.T, email, repositoryName, unsubscribeToken string) {
+	t.Helper()
+
+	_, err := e.db.ExecContext(
+		t.Context(),
+		`INSERT INTO subscriptions (email, repository, status, confirm_token, unsubscribe_token)
+		 VALUES ($1, $2, 'active', $3, $4)`,
+		email,
+		repositoryName,
+		gofakeit.UUID(),
+		unsubscribeToken,
+	)
+	require.NoError(t, err, "insert subscription")
+}
+
+func (e *e2eNotifier) upsertRepositoryStateTag(t *testing.T, repositoryName, tag string) {
+	t.Helper()
+
+	_, err := e.db.ExecContext(
+		t.Context(),
+		`INSERT INTO repository_states (repository, last_seen_tag, last_checked_at, updated_at)
+		 VALUES ($1, $2, NOW(), NOW())
+		 ON CONFLICT (repository) DO UPDATE SET last_seen_tag = $2, updated_at = NOW()`,
+		repositoryName,
+		tag,
+	)
+	require.NoError(t, err, "insert repository state")
+}
+
+func (e *e2eNotifier) getLastNotifiedTagByEmail(t *testing.T, email string) string {
+	t.Helper()
+
+	var lastNotifiedTag string
+	err := e.db.QueryRowContext(
+		t.Context(),
+		"SELECT last_notified_tag FROM subscriptions WHERE email=$1",
+		email,
+	).Scan(&lastNotifiedTag)
+	require.NoError(t, err, "get last_notified_tag")
+
+	return lastNotifiedTag
+}
+
+func (e *e2eNotifier) waitForMailpitReleaseEmail(
 	t *testing.T,
 	recipient string,
 	repositoryName string,
@@ -78,7 +105,7 @@ func (e *e2e) waitForMailpitReleaseEmail(
 	t.Fatalf("timed out waiting for release email to %s for %s tag %s", recipient, repositoryName, releaseTag)
 }
 
-func (e *e2e) findMailpitReleaseEmail(t *testing.T, recipient, repositoryName, releaseTag string) bool {
+func (e *e2eNotifier) findMailpitReleaseEmail(t *testing.T, recipient, repositoryName, releaseTag string) bool {
 	t.Helper()
 
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, e.smtpAPIBaseURL+"/api/v1/messages", http.NoBody)
@@ -123,6 +150,7 @@ func (e *e2e) findMailpitReleaseEmail(t *testing.T, recipient, repositoryName, r
 	return false
 }
 
-func fakeRepository() string {
+// fakeRepo generates a random non-existent repository.
+func fakeRepo() string {
 	return strings.ToLower(gofakeit.SafeColor() + "/" + gofakeit.Color())
 }

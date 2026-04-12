@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,19 +18,14 @@ import (
 	"testing"
 	"time"
 
-	gh "github.com/google/go-github/v84/github"
+	"github.com/google/go-github/v84/github"
 	"github.com/subosito/gotenv"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	subclient "github.com/dmytrovoron/github-release-notification/tests/http/client"
+	apiclient "github.com/dmytrovoron/github-release-notification/tests/http/client"
 )
-
-// e is the package-level e2e fixture initialized once in TestMain.
-//
-//nolint:gochecknoglobals // intentional: single shared fixture set up in TestMain
-var e e2e
 
 func TestMain(m *testing.M) {
 	run(m)
@@ -106,16 +102,28 @@ func run(m *testing.M) int {
 
 	defer func() { _ = db.Close() }()
 
-	ghClient := gh.NewClient(&http.Client{Timeout: 20 * time.Second}).WithAuthToken(env["GITHUB_AUTH_TOKEN"])
+	ghClient := github.NewClient(&http.Client{Timeout: 20 * time.Second}).WithAuthToken(env["GITHUB_AUTH_TOKEN"])
 
-	e = e2e{
-		client:         mustNewAPIClient(fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port()))),
-		db:             db,
-		smtpAPIBaseURL: "http://" + net.JoinHostPort(smtpHost, smtpHTTPPort.Port()),
-		gh:             ghClient,
+	apiClient := mustNewAPIClient(fmt.Sprintf("http://%s/api", net.JoinHostPort(appHost, appPort.Port())))
+	smtpAPIBaseURL := "http://" + net.JoinHostPort(smtpHost, smtpHTTPPort.Port())
+
+	eAPI = e2eAPI{
+		client: apiClient,
+		db:     db,
 	}
 
-	if err := e.requireRepositoryAccess(ctx, scannerE2ERepository); err != nil {
+	eScanner = e2eScanner{
+		client: apiClient,
+		db:     db,
+		gh:     ghClient,
+	}
+
+	eNotifier = e2eNotifier{
+		smtpAPIBaseURL: smtpAPIBaseURL,
+		db:             db,
+	}
+
+	if err := requireRepositoryAccess(ctx, ghClient, scannerE2ERepository); err != nil {
 		log.Fatalf("repository access check failed: %v", err)
 	}
 
@@ -264,7 +272,7 @@ func mustStartAppContainer(
 	return c
 }
 
-func mustNewAPIClient(baseURL string) *subclient.GitHubReleaseNotificationAPI {
+func mustNewAPIClient(baseURL string) *apiclient.GitHubReleaseNotificationAPI {
 	parsedURL, err := url.Parse(baseURL)
 	if err != nil {
 		log.Fatalf("parse api base url: %v", err)
@@ -279,12 +287,12 @@ func mustNewAPIClient(baseURL string) *subclient.GitHubReleaseNotificationAPI {
 		basePath = "/"
 	}
 
-	cfg := subclient.DefaultTransportConfig().
+	cfg := apiclient.DefaultTransportConfig().
 		WithHost(parsedURL.Host).
 		WithBasePath(basePath).
 		WithSchemes([]string{parsedURL.Scheme})
 
-	return subclient.NewHTTPClientWithConfig(nil, cfg)
+	return apiclient.NewHTTPClientWithConfig(nil, cfg)
 }
 
 func dumpContainerLogs(ctx context.Context, c testcontainers.Container, containerName string) {
@@ -321,4 +329,34 @@ func dumpContainerLogs(ctx context.Context, c testcontainers.Container, containe
 	}
 
 	log.Printf("%s container logs:\n%s", containerName, string(logBytes))
+}
+
+func requireRepositoryAccess(ctx context.Context, ghClient *github.Client, repositoryName string) error {
+	owner, repo, ok := strings.Cut(repositoryName, "/")
+	if !ok {
+		return fmt.Errorf("repository name must be owner/repo, got %q", repositoryName)
+	}
+
+	_, resp, err := ghClient.Repositories.Get(ctx, owner, repo)
+	if err == nil {
+		return nil
+	}
+
+	if ghErr, ok := errors.AsType[*github.ErrorResponse](err); ok {
+		switch ghErr.Response.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+			return fmt.Errorf(
+				"GITHUB_AUTH_TOKEN must have read and write access to %s (github status %d)",
+				repositoryName,
+				ghErr.Response.StatusCode,
+			)
+		default:
+		}
+	}
+
+	if resp != nil {
+		return fmt.Errorf("verify repository access for %s: %w (status %d)", repositoryName, err, resp.StatusCode)
+	}
+
+	return fmt.Errorf("verify repository access for %s: %w", repositoryName, err)
 }
