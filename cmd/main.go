@@ -14,16 +14,16 @@ import (
 	"time"
 
 	"github.com/go-openapi/loads"
+	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jessevdk/go-flags"
 
 	"github.com/dmytrovoron/github-release-notification/internal/config"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi"
-	"github.com/dmytrovoron/github-release-notification/internal/http/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/integration/github"
-	"github.com/dmytrovoron/github-release-notification/internal/migrations"
 	"github.com/dmytrovoron/github-release-notification/internal/repository/postgres"
 	"github.com/dmytrovoron/github-release-notification/internal/service/api"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi"
+	"github.com/dmytrovoron/github-release-notification/internal/service/api/restapi/operations"
 	"github.com/dmytrovoron/github-release-notification/internal/service/notifier"
 	"github.com/dmytrovoron/github-release-notification/internal/service/scanner"
 )
@@ -64,7 +64,7 @@ func server() error {
 		return fmt.Errorf("ping database: %w", err)
 	}
 
-	if err := migrations.Run(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
+	if err := migrationsRun(cfg.DatabaseURL, cfg.MigrationsPath); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
@@ -176,6 +176,23 @@ func server() error {
 	}
 
 	wg.Wait()
+
+	return nil
+}
+
+// migrationsRun applies all pending database migrations.
+func migrationsRun(databaseURL, migrationsPath string) error {
+	m, err := migrate.New(migrationsPath, databaseURL)
+	if err != nil {
+		return fmt.Errorf("create migrator: %w", err)
+	}
+	defer func() {
+		_, _ = m.Close()
+	}()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("run migrations: %w", err)
+	}
 
 	return nil
 }
