@@ -52,8 +52,8 @@ func (e *e2eScanner) requireRepositoryAccess(t *testing.T, repositoryName string
 	if ghErr, ok := errors.AsType[*gh.ErrorResponse](err); ok {
 		switch ghErr.Response.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-			t.Skipf(
-				"GITHUB_AUTH_TOKEN must have read access to %s (github status %d)",
+			t.Fatalf(
+				"GITHUB_AUTH_TOKEN must have read and write access to %s (github status %d)",
 				repositoryName,
 				ghErr.Response.StatusCode,
 			)
@@ -78,18 +78,7 @@ func (e *e2eScanner) createGitHubRelease(t *testing.T, repositoryName, tag strin
 		Name:    &tag,
 		Body:    new("e2e scanner release"),
 	})
-	if ghErr, ok := errors.AsType[*gh.ErrorResponse](err); ok {
-		switch ghErr.Response.StatusCode {
-		case http.StatusUnauthorized, http.StatusForbidden:
-			t.Skipf(
-				"GITHUB_AUTH_TOKEN must allow creating releases for %s (github status %d)",
-				repositoryName,
-				ghErr.Response.StatusCode,
-			)
-		}
-	}
 	require.NoError(t, err, "create github release")
-	require.NotNil(t, created)
 	require.NotZero(t, created.GetID())
 
 	return created.GetID()
@@ -120,6 +109,7 @@ func (e *e2e) waitForRepositoryStateTag(t *testing.T, repositoryName string, tim
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var tag string
+		//nolint:unqueryvet // it's ok in tests
 		err := e.db.QueryRowContext(
 			t.Context(),
 			"SELECT last_seen_tag FROM repository_states WHERE repository=$1",

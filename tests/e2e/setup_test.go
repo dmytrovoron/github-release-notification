@@ -75,7 +75,7 @@ func setup(t *testing.T) e2e {
 	return e2e{
 		client:         client,
 		db:             db,
-		smtpAPIBaseURL: fmt.Sprintf("http://%s", net.JoinHostPort(smtpHost, smtpHTTPPort.Port())),
+		smtpAPIBaseURL: "http://" + net.JoinHostPort(smtpHost, smtpHTTPPort.Port()),
 	}
 }
 
@@ -87,6 +87,7 @@ func attachContainerLogsOnFailure(t *testing.T, c testcontainers.Container, cont
 			return
 		}
 
+		//nolint:usetesting // context.Background is used intentionally instead of t.Context
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
